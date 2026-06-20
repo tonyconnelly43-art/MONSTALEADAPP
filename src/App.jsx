@@ -12,7 +12,7 @@ import './index.css';
 export default function App() {
   return (
     <LeadsProvider>
-      <BrowserRouter>
+      <BrowserRouter basename="/MONSTALEADAPP">
         <Layout>
           <Routes>
             <Route path="/" element={<Dashboard />} />

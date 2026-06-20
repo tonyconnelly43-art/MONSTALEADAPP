@@ -61,52 +61,69 @@ function safe(fn, fallback = null) {
   try { return fn(); } catch { return fallback; }
 }
 
-async function fetchPageSpeedData(rawUrl) {
-  const clean = rawUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-  const target = encodeURIComponent(`https://${clean}`);
-  const endpoint = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${target}&strategy=mobile&category=performance&category=seo&category=accessibility`;
+function cleanUrl(raw) {
+  const s = raw.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  return `https://${s}`;
+}
 
-  const res = await fetch(endpoint);
-  if (!res.ok) throw new Error(`API returned ${res.status}`);
+async function fetchSiteData(rawUrl) {
+  const fullUrl = cleanUrl(rawUrl);
 
-  const json = await res.json();
-  const lhr = json?.lighthouseResult;
-  if (!lhr) throw new Error('No lighthouse data returned');
+  // Run Microlink (screenshot + meta) and PageSpeed (scores) in parallel
+  const [mlRes, psRes] = await Promise.allSettled([
+    fetch(`https://api.microlink.io/?url=${encodeURIComponent(fullUrl)}&screenshot=true&meta=true&timeout=15000`),
+    fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(fullUrl)}&strategy=mobile&category=performance&category=seo&category=accessibility`),
+  ]);
 
-  const audits = lhr.audits || {};
-  const cats = lhr.categories || {};
+  // --- Microlink data ---
+  let screenshot = null;
+  let title = '';
+  let description = '';
 
-  // Screenshot — try multiple possible locations
-  const screenshot =
-    safe(() => audits['final-screenshot']?.details?.data) ||
-    safe(() => {
-      const items = audits['screenshot-thumbnails']?.details?.items;
-      return Array.isArray(items) && items.length ? items[items.length - 1]?.data : null;
-    }) ||
-    null;
+  if (mlRes.status === 'fulfilled' && mlRes.value.ok) {
+    const ml = await mlRes.value.json().catch(() => ({}));
+    screenshot = safe(() => ml.data?.screenshot?.url) || safe(() => ml.data?.image?.url) || null;
+    title = safe(() => ml.data?.title) || '';
+    description = safe(() => ml.data?.description) || '';
+  }
 
-  return {
-    screenshot,
-    title: safe(() => audits['document-title']?.details?.items?.[0]?.node?.nodeLabel) ||
-           safe(() => lhr.finalUrl) || '',
-    perfScore: safe(() => Math.round((cats.performance?.score || 0) * 100), 0),
-    seoScore: safe(() => Math.round((cats.seo?.score || 0) * 100), 0),
-    a11yScore: safe(() => Math.round((cats.accessibility?.score || 0) * 100), 0),
-    mobileScore: safe(() => audits['viewport']?.score === 1 ? 100 : audits['viewport']?.score === 0 ? 10 : 50, 50),
-    fcp: safe(() => audits['first-contentful-paint']?.displayValue, '—'),
-    lcp: safe(() => audits['largest-contentful-paint']?.displayValue, '—'),
-    tbt: safe(() => audits['total-blocking-time']?.displayValue, '—'),
-    cls: safe(() => audits['cumulative-layout-shift']?.displayValue, '—'),
-    opportunities: safe(() =>
-      Object.values(audits)
-        .filter(a => a?.details?.type === 'opportunity' && typeof a.score === 'number' && a.score < 0.9)
-        .slice(0, 4)
-        .map(a => a.title || '')
-        .filter(Boolean),
-      []
-    ),
-    finalUrl: safe(() => lhr.finalUrl, ''),
-  };
+  // --- PageSpeed data ---
+  let perfScore = null, seoScore = null, a11yScore = null, mobileScore = null;
+  let fcp = '—', lcp = '—', tbt = '—', cls = '—';
+  let opportunities = [];
+
+  if (psRes.status === 'fulfilled' && psRes.value.ok) {
+    const ps = await psRes.value.json().catch(() => ({}));
+    const lhr = ps?.lighthouseResult;
+    if (lhr) {
+      const audits = lhr.audits || {};
+      const cats = lhr.categories || {};
+      perfScore = safe(() => Math.round((cats.performance?.score ?? 0) * 100));
+      seoScore  = safe(() => Math.round((cats.seo?.score ?? 0) * 100));
+      a11yScore = safe(() => Math.round((cats.accessibility?.score ?? 0) * 100));
+      mobileScore = safe(() => audits['viewport']?.score === 1 ? 100 : 20);
+      fcp = safe(() => audits['first-contentful-paint']?.displayValue, '—');
+      lcp = safe(() => audits['largest-contentful-paint']?.displayValue, '—');
+      tbt = safe(() => audits['total-blocking-time']?.displayValue, '—');
+      cls = safe(() => audits['cumulative-layout-shift']?.displayValue, '—');
+      opportunities = safe(() =>
+        Object.values(audits)
+          .filter(a => a?.details?.type === 'opportunity' && typeof a.score === 'number' && a.score < 0.9)
+          .slice(0, 4).map(a => a.title).filter(Boolean), []
+      );
+      // Fallback screenshot from PageSpeed if Microlink didn't get one
+      if (!screenshot) {
+        screenshot = safe(() => audits['final-screenshot']?.details?.data) || null;
+      }
+    }
+  }
+
+  // If both failed completely, throw
+  if (!screenshot && perfScore === null && !title) {
+    throw new Error('Both scan services returned no data. The site may be blocking automated access.');
+  }
+
+  return { screenshot, title, description, perfScore, seoScore, a11yScore, mobileScore, fcp, lcp, tbt, cls, opportunities };
 }
 
 export default function BrandAudit() {
@@ -129,7 +146,7 @@ export default function BrandAudit() {
     setLoading(true);
 
     try {
-      const data = await fetchPageSpeedData(url.trim());
+      const data = await fetchSiteData(url.trim());
       setSiteData(data);
       // Auto-hint a few checklist items from data
       const hints = {};
@@ -277,6 +294,12 @@ export default function BrandAudit() {
                     <div className="site-meta-row">
                       <div className="site-meta-label">Page Title</div>
                       <div className="site-meta-value">{siteData.title}</div>
+                    </div>
+                  )}
+                  {siteData.description && (
+                    <div className="site-meta-row" style={{ marginTop: 8 }}>
+                      <div className="site-meta-label">Meta Description</div>
+                      <div className="site-meta-value" style={{ color: 'var(--text2)', fontSize: 12 }}>{siteData.description}</div>
                     </div>
                   )}
                 </div>

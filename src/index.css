@@ -1146,3 +1146,44 @@ html, body, #root {
   .site-iframe { height: 360px; }
   .iframe-loading, .iframe-blocked { height: 360px; }
 }
+
+/* ============ CONTACT FINDER ============ */
+.contact-section-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text2);
+  margin-bottom: 6px;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--text);
+  gap: 8px;
+}
+
+.contact-item span { 
+  overflow: hidden; 
+  text-overflow: ellipsis; 
+  white-space: nowrap; 
+  flex: 1;
+}
+
+.contact-none {
+  font-size: 11px;
+  color: var(--text2);
+  padding: 6px 0;
+  font-style: italic;
+}

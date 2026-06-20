@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Zap, CheckCircle, XCircle, Circle, ExternalLink, ClipboardList, Monitor, AlertTriangle, Globe, Mail, Phone, Search, Copy, Facebook, Instagram, Twitter } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Zap, CheckCircle, XCircle, Circle, ExternalLink, ClipboardList, AlertTriangle, Globe, Mail, Phone, Search, Copy, PlusCircle } from 'lucide-react';
+import { useLeads } from '../context/LeadsContext';
 
 const CHECKLIST = [
   { id: 'logo', label: 'Does the logo look professional?', tip: 'Check for clean vectors, modern typography, and intentional color palette.' },
@@ -93,6 +95,8 @@ function cleanUrl(raw) {
 }
 
 export default function BrandAudit() {
+  const { addLead } = useLeads();
+  const navigate = useNavigate();
   const [urlInput, setUrlInput] = useState('');
   const [activeUrl, setActiveUrl] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -103,6 +107,7 @@ export default function BrandAudit() {
   const [contactInfo, setContactInfo] = useState(null);
   const [contactLoading, setContactLoading] = useState(false);
   const [copied, setCopied] = useState('');
+  const [addedToLeads, setAddedToLeads] = useState(false);
 
   function startAudit() {
     if (!urlInput.trim()) return;
@@ -113,6 +118,7 @@ export default function BrandAudit() {
     setIframeBlocked(false);
     setIframeLoaded(false);
     setContactInfo(null);
+    setAddedToLeads(false);
   }
 
   async function runContactScan() {
@@ -165,6 +171,29 @@ export default function BrandAudit() {
     ].join('\n');
     navigator.clipboard.writeText(report);
     alert('Report copied to clipboard!');
+  }
+
+  function addToLeads() {
+    const auditNotes = [
+      `Brand Score: ${score}/10 — ${scoreLabel.text}`,
+      answered > 0 ? `Passing: ${yesCount} | Failing: ${noCount}` : '',
+      ...CHECKLIST.filter(c => checks[c.id] === 'no').map(c => `✗ ${c.label}`),
+      notes ? `Notes: ${notes}` : '',
+    ].filter(Boolean).join('\n');
+
+    addLead({
+      companyName: companyName || domain,
+      website: domain,
+      email: contactInfo?.emails?.[0] || '',
+      phone: contactInfo?.phones?.[0] || '',
+      industry: 'HVAC',
+      city: '',
+      state: '',
+      opportunityScore: score,
+      status: 'Reviewed',
+      notes: auditNotes,
+    });
+    setAddedToLeads(true);
   }
 
   const domain = activeUrl ? activeUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '') : '';
@@ -354,6 +383,28 @@ export default function BrandAudit() {
                 </div>
               )}
             </div>
+
+            {/* Add to Lead List */}
+            {activeUrl && (
+              <div className="card" style={{ marginTop: 12 }}>
+                {addedToLeads ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ color: '#39d353', fontWeight: 700 }}><CheckCircle size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />Added to Lead Database!</div>
+                    <button className="btn btn--ghost btn--sm" onClick={() => navigate('/leads')}>View Leads</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, marginBottom: 2 }}>Save as Lead</div>
+                      <div style={{ color: 'var(--text2)', fontSize: 12 }}>Add this company to your Lead Database with contact info and audit score.</div>
+                    </div>
+                    <button className="btn btn--primary" onClick={addToLeads}>
+                      <PlusCircle size={15} /> Add to Leads
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Score summary under preview */}
             {answered >= 3 && (

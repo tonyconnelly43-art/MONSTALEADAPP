@@ -941,3 +941,143 @@ html, body, #root {
   .pipeline { gap: 6px; }
   .pipeline-label { font-size: 9px; }
 }
+
+/* ============ BRAND AUDIT — SITE DATA ============ */
+.site-data-panel {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.screenshot-card { padding: 16px; }
+
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 12px;
+}
+
+.browser-dots { display: flex; gap: 5px; }
+.browser-dots span {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.browser-dots span:nth-child(1) { background: #ff5f57; }
+.browser-dots span:nth-child(2) { background: #febc2e; }
+.browser-dots span:nth-child(3) { background: #28c840; }
+
+.browser-url {
+  font-size: 11px;
+  color: var(--text2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 10px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screenshot-wrap {
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.site-screenshot {
+  width: 100%;
+  display: block;
+  max-height: 340px;
+  object-fit: cover;
+  object-position: top;
+}
+
+.site-meta-row { margin-top: 8px; }
+.site-meta-label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+.site-meta-value { font-size: 13px; color: var(--text); font-weight: 500; }
+
+.gauges-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.gauge-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.gauge-icon { margin-bottom: 4px; display: flex; justify-content: center; }
+.gauge-value { font-size: 26px; font-weight: 900; line-height: 1; margin-bottom: 6px; }
+
+.gauge-bar-wrap {
+  height: 4px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.gauge-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+.gauge-label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.metric-item {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.metric-label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.metric-value { font-size: 16px; font-weight: 700; color: var(--text); }
+
+.opportunity-item {
+  padding: 8px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-left: 3px solid #cc1a1a;
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.opportunity-title { font-weight: 600; color: var(--text); }
+
+.scan-loading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  margin-bottom: 12px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }
+
+@media (max-width: 768px) {
+  .site-data-panel { grid-template-columns: 1fr; }
+  .gauges-grid { grid-template-columns: 1fr 1fr; }
+}

@@ -18,7 +18,7 @@ function MascotImage() {
   if (!imgErr) {
     return (
       <img
-        src={`${BASE}/images/mascot.png`}
+        src={`${BASE}/images/monstaman google.png`}
         alt="Monsta mascot"
         width="52"
         height="52"

@@ -21,6 +21,7 @@ const CONTACT_PATHS = ['', '/contact', '/contact-us', '/about', '/about-us', '/g
 
 const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
 const PHONE_RE = /(\+?1[\s.\-]?)?(\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4})/g;
+const TEL_RE = /href=["']tel:([+\d\s.\-()\-]{7,})/gi;
 const SOCIAL_RE = {
   facebook: /https?:\/\/(www\.)?facebook\.com\/[^\s"'<>]+/gi,
   instagram: /https?:\/\/(www\.)?instagram\.com\/[^\s"'<>]+/gi,
@@ -50,8 +51,20 @@ function parseContactInfo(html) {
     .filter(e => !e.includes('.png') && !e.includes('.jpg') && !e.includes('.gif') && !e.includes('example') && !e.includes('sentry') && !e.includes('schema'))
   )].slice(0, 5);
 
+  // Extract tel: href links first (most reliable — always in static HTML)
+  const telLinks = [];
+  let telMatch;
+  const telReCopy = new RegExp(TEL_RE.source, 'gi');
+  while ((telMatch = telReCopy.exec(html)) !== null) {
+    const num = telMatch[1].trim();
+    if (num.replace(/\D/g, '').length >= 10) telLinks.push(num);
+  }
+
   const rawPhones = clean.match(PHONE_RE) || [];
-  const phones = [...new Set(rawPhones.map(p => p.trim()).filter(p => p.replace(/\D/g, '').length >= 10))].slice(0, 3);
+  const phones = [...new Set([
+    ...telLinks,
+    ...rawPhones.map(p => p.trim()).filter(p => p.replace(/\D/g, '').length >= 10),
+  ])].slice(0, 3);
 
   const social = {};
   for (const [platform, re] of Object.entries(SOCIAL_RE)) {

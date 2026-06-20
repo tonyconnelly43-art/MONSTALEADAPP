@@ -1081,3 +1081,17 @@ html, body, #root {
   .site-data-panel { grid-template-columns: 1fr; }
   .gauges-grid { grid-template-columns: 1fr 1fr; }
 }
+
+.no-screenshot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: var(--text2);
+  font-size: 13px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Zap, CheckCircle, XCircle, Circle, ExternalLink, ClipboardList, Loader, Monitor, Gauge, Smartphone } from 'lucide-react';
+import { useState, Component } from 'react';
+import { Zap, CheckCircle, XCircle, Circle, ExternalLink, ClipboardList, Loader, Monitor, Gauge, Smartphone, AlertTriangle } from 'lucide-react';
 
 const CHECKLIST = [
   { id: 'logo', label: 'Does the logo look professional?', tip: 'Check for clean vectors, modern typography, and intentional color palette.' },
@@ -16,60 +16,97 @@ const CHECKLIST = [
 
 function scoreColor(score) {
   if (score >= 80) return '#39d353';
-  if (score >= 50) return '#ff6b00';
+  if (score >= 50) return '#ff9500';
   return '#ff4444';
 }
 
+// Error boundary so a crash doesn't take down the whole page
+class AuditErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="card" style={{ borderColor: '#ff444455', padding: 20, marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', color: '#ff4444', marginBottom: 8 }}>
+            <AlertTriangle size={18} /> <strong>Something went wrong displaying the scan results.</strong>
+          </div>
+          <div style={{ color: 'var(--text2)', fontSize: 12 }}>You can still complete the checklist manually below.</div>
+          <button className="btn btn--ghost btn--sm" style={{ marginTop: 10 }} onClick={() => this.setState({ error: null })}>
+            Dismiss
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function ScoreGauge({ label, score, icon: Icon }) {
-  const color = scoreColor(score);
+  const s = Math.max(0, Math.min(100, Number(score) || 0));
+  const color = scoreColor(s);
   return (
     <div className="gauge-card">
       <div className="gauge-icon"><Icon size={18} color={color} /></div>
-      <div className="gauge-value" style={{ color }}>{score}</div>
+      <div className="gauge-value" style={{ color }}>{s}</div>
       <div className="gauge-bar-wrap">
-        <div className="gauge-bar" style={{ width: `${score}%`, background: color }} />
+        <div className="gauge-bar" style={{ width: `${s}%`, background: color }} />
       </div>
       <div className="gauge-label">{label}</div>
     </div>
   );
 }
 
+function safe(fn, fallback = null) {
+  try { return fn(); } catch { return fallback; }
+}
+
 async function fetchPageSpeedData(rawUrl) {
-  const clean = rawUrl.replace(/^https?:\/\//i, '');
+  const clean = rawUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
   const target = encodeURIComponent(`https://${clean}`);
-  const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${target}&strategy=mobile&category=performance&category=seo&category=accessibility`;
+  const endpoint = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${target}&strategy=mobile&category=performance&category=seo&category=accessibility`;
 
-  const res = await fetch(apiUrl);
-  if (!res.ok) throw new Error('PageSpeed API error');
-  const data = await res.json();
+  const res = await fetch(endpoint);
+  if (!res.ok) throw new Error(`API returned ${res.status}`);
 
-  const lhr = data.lighthouseResult;
-  const cats = lhr.categories;
+  const json = await res.json();
+  const lhr = json?.lighthouseResult;
+  if (!lhr) throw new Error('No lighthouse data returned');
 
-  const screenshot = lhr.audits['final-screenshot']?.details?.data || null;
-  const thumbnail = lhr.audits['screenshot-thumbnails']?.details?.items?.slice(-1)[0]?.data || screenshot;
+  const audits = lhr.audits || {};
+  const cats = lhr.categories || {};
 
-  const title = lhr.audits['document-title']?.displayValue || '';
-  const description = lhr.audits['meta-description']?.details?.items?.[0]?.node?.snippet || '';
+  // Screenshot — try multiple possible locations
+  const screenshot =
+    safe(() => audits['final-screenshot']?.details?.data) ||
+    safe(() => {
+      const items = audits['screenshot-thumbnails']?.details?.items;
+      return Array.isArray(items) && items.length ? items[items.length - 1]?.data : null;
+    }) ||
+    null;
 
-  const perfScore = Math.round((cats.performance?.score || 0) * 100);
-  const seoScore = Math.round((cats.seo?.score || 0) * 100);
-  const a11yScore = Math.round((cats.accessibility?.score || 0) * 100);
-
-  const fcp = lhr.audits['first-contentful-paint']?.displayValue || '';
-  const lcp = lhr.audits['largest-contentful-paint']?.displayValue || '';
-  const tbt = lhr.audits['total-blocking-time']?.displayValue || '';
-  const cls = lhr.audits['cumulative-layout-shift']?.displayValue || '';
-
-  const mobileViewport = lhr.audits['viewport']?.score === 1;
-  const tapTargets = lhr.audits['tap-targets']?.score;
-
-  const opportunities = Object.values(lhr.audits)
-    .filter(a => a.details?.type === 'opportunity' && a.score !== null && a.score < 1)
-    .map(a => ({ title: a.title, description: a.description }))
-    .slice(0, 4);
-
-  return { screenshot: thumbnail || screenshot, title, description, perfScore, seoScore, a11yScore, fcp, lcp, tbt, cls, mobileViewport, opportunities };
+  return {
+    screenshot,
+    title: safe(() => audits['document-title']?.details?.items?.[0]?.node?.nodeLabel) ||
+           safe(() => lhr.finalUrl) || '',
+    perfScore: safe(() => Math.round((cats.performance?.score || 0) * 100), 0),
+    seoScore: safe(() => Math.round((cats.seo?.score || 0) * 100), 0),
+    a11yScore: safe(() => Math.round((cats.accessibility?.score || 0) * 100), 0),
+    mobileScore: safe(() => audits['viewport']?.score === 1 ? 100 : audits['viewport']?.score === 0 ? 10 : 50, 50),
+    fcp: safe(() => audits['first-contentful-paint']?.displayValue, '—'),
+    lcp: safe(() => audits['largest-contentful-paint']?.displayValue, '—'),
+    tbt: safe(() => audits['total-blocking-time']?.displayValue, '—'),
+    cls: safe(() => audits['cumulative-layout-shift']?.displayValue, '—'),
+    opportunities: safe(() =>
+      Object.values(audits)
+        .filter(a => a?.details?.type === 'opportunity' && typeof a.score === 'number' && a.score < 0.9)
+        .slice(0, 4)
+        .map(a => a.title || '')
+        .filter(Boolean),
+      []
+    ),
+    finalUrl: safe(() => lhr.finalUrl, ''),
+  };
 }
 
 export default function BrandAudit() {
@@ -90,18 +127,19 @@ export default function BrandAudit() {
     setSiteData(null);
     setLoadError('');
     setLoading(true);
+
     try {
       const data = await fetchPageSpeedData(url.trim());
       setSiteData(data);
-      // Auto-fill checklist based on data
-      const autoChecks = {};
-      if (data.perfScore >= 70) autoChecks.speed = 'yes';
-      else if (data.perfScore < 40) autoChecks.speed = 'no';
-      if (data.mobileViewport) autoChecks.mobile = 'yes';
-      if (data.seoScore >= 80) autoChecks.socialmedia = 'yes';
-      setChecks(autoChecks);
+      // Auto-hint a few checklist items from data
+      const hints = {};
+      if (data.perfScore >= 70) hints.speed = 'yes';
+      else if (data.perfScore < 40) hints.speed = 'no';
+      if (data.mobileScore >= 90) hints.mobile = 'yes';
+      else if (data.mobileScore < 30) hints.mobile = 'no';
+      setChecks(hints);
     } catch (e) {
-      setLoadError('Could not load site data. You can still complete the audit manually.');
+      setLoadError(`Scan failed: ${e.message}. You can still complete the checklist manually — open the site in a new tab using the button above.`);
     } finally {
       setLoading(false);
     }
@@ -113,59 +151,53 @@ export default function BrandAudit() {
 
   const yesCount = Object.values(checks).filter(v => v === 'yes').length;
   const noCount = Object.values(checks).filter(v => v === 'no').length;
-  const total = CHECKLIST.length;
   const answered = Object.values(checks).filter(Boolean).length;
   const score = answered ? Math.round((yesCount / answered) * 10) : 0;
 
   const scoreLabel =
     score >= 8 ? { text: 'Strong Brand', color: '#39d353' } :
-    score >= 5 ? { text: 'Needs Work', color: '#ff6b00' } :
+    score >= 5 ? { text: 'Needs Work', color: '#ff9500' } :
     { text: 'Major Opportunity', color: '#ff4444' };
 
   function copyReport() {
-    const lines = [
-      `BRAND AUDIT REPORT — ${companyName || url}`,
+    const report = [
+      `BRAND AUDIT — ${companyName || url}`,
       `Date: ${new Date().toLocaleDateString()}`,
       '',
       siteData ? [
-        `Page Title: ${siteData.title}`,
-        `Performance Score: ${siteData.perfScore}/100`,
-        `SEO Score: ${siteData.seoScore}/100`,
-        `Accessibility Score: ${siteData.a11yScore}/100`,
-        `First Contentful Paint: ${siteData.fcp}`,
-        `Largest Contentful Paint: ${siteData.lcp}`,
+        `Performance: ${siteData.perfScore}/100`,
+        `SEO: ${siteData.seoScore}/100`,
+        `Accessibility: ${siteData.a11yScore}/100`,
+        `First Paint: ${siteData.fcp}  |  Largest Paint: ${siteData.lcp}`,
         '',
       ].join('\n') : '',
-      '--- CHECKLIST ---',
+      '--- BRAND CHECKLIST ---',
       ...CHECKLIST.map(c => `[${checks[c.id] === 'yes' ? '✓' : checks[c.id] === 'no' ? '✗' : '-'}] ${c.label}`),
       '',
       `Brand Score: ${score}/10 — ${scoreLabel.text}`,
       '',
       notes ? `Notes:\n${notes}` : '',
     ].join('\n');
-    navigator.clipboard.writeText(lines);
-    alert('Report copied to clipboard!');
+    navigator.clipboard.writeText(report);
+    alert('Report copied!');
   }
+
+  const siteUrl = url ? `https://${url.replace(/^https?:\/\//i, '')}` : '';
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Brand Audit</h1>
-          <p className="page-subtitle">Enter a URL to pull live site data + run your checklist</p>
+          <p className="page-subtitle">Scan any website and run your checklist</p>
         </div>
       </div>
 
-      {/* URL Input */}
+      {/* Input */}
       <div className="card" style={{ marginBottom: 16 }}>
         <h2 className="card-title" style={{ marginBottom: 16 }}>Start an Audit</h2>
         <div className="audit-inputs">
-          <input
-            className="input"
-            placeholder="Company name (optional)"
-            value={companyName}
-            onChange={e => setCompanyName(e.target.value)}
-          />
+          <input className="input" placeholder="Company name (optional)" value={companyName} onChange={e => setCompanyName(e.target.value)} />
           <div style={{ display: 'flex', gap: 8, flex: 2 }}>
             <input
               className="input"
@@ -175,7 +207,7 @@ export default function BrandAudit() {
               onKeyDown={e => e.key === 'Enter' && startAudit()}
             />
             {url && (
-              <a href={`https://${url.replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer" className="btn btn--ghost btn--sm">
+              <a href={siteUrl} target="_blank" rel="noreferrer" className="btn btn--ghost btn--sm">
                 <ExternalLink size={15} /> Open
               </a>
             )}
@@ -186,181 +218,177 @@ export default function BrandAudit() {
         </div>
       </div>
 
-      {/* Live Site Data Panel */}
       {started && (
         <>
+          {/* Loading state */}
           {loading && (
             <div className="card scan-loading">
               <Loader size={28} className="spin" color="#cc1a1a" />
               <div>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Scanning {url}...</div>
-                <div style={{ color: 'var(--text2)', fontSize: 12 }}>Running Google PageSpeed analysis — takes about 10–20 seconds</div>
+                <div style={{ color: 'var(--text2)', fontSize: 12 }}>Running Google PageSpeed analysis — takes 10–25 seconds</div>
               </div>
             </div>
           )}
 
-          {loadError && (
-            <div className="error-msg" style={{ marginBottom: 16 }}>{loadError}</div>
+          {/* Error state */}
+          {loadError && !loading && (
+            <div className="card" style={{ borderColor: '#ff9500aa', marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <AlertTriangle size={18} color="#ff9500" style={{ flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <div style={{ fontWeight: 600, color: '#ff9500', marginBottom: 4 }}>Scan couldn't complete</div>
+                  <div style={{ color: 'var(--text2)', fontSize: 12, lineHeight: 1.6 }}>{loadError}</div>
+                </div>
+              </div>
+            </div>
           )}
 
-          {siteData && (
-            <div className="site-data-panel">
-              {/* Screenshot */}
-              <div className="card screenshot-card">
-                <div className="card-header">
-                  <h3 className="card-title"><Monitor size={16} style={{ marginRight: 6 }} />Live Screenshot</h3>
-                  <a href={`https://${url.replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer" className="btn btn--ghost btn--sm">
-                    <ExternalLink size={13} /> Visit Site
-                  </a>
-                </div>
-                {siteData.screenshot ? (
-                  <div className="screenshot-wrap">
-                    <div className="browser-bar">
-                      <div className="browser-dots">
-                        <span /><span /><span />
+          {/* Site data results */}
+          <AuditErrorBoundary>
+            {siteData && !loading && (
+              <div className="site-data-panel">
+                {/* Screenshot panel */}
+                <div className="card screenshot-card">
+                  <div className="card-header">
+                    <h3 className="card-title"><Monitor size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />Live Screenshot</h3>
+                    <a href={siteUrl} target="_blank" rel="noreferrer" className="btn btn--ghost btn--sm">
+                      <ExternalLink size={13} /> Visit
+                    </a>
+                  </div>
+                  {siteData.screenshot ? (
+                    <div className="screenshot-wrap">
+                      <div className="browser-bar">
+                        <div className="browser-dots"><span /><span /><span /></div>
+                        <div className="browser-url">{url.replace(/^https?:\/\//i, '')}</div>
                       </div>
-                      <div className="browser-url">{url.replace(/^https?:\/\//, '')}</div>
+                      <img src={siteData.screenshot} alt="Site screenshot" className="site-screenshot" />
                     </div>
-                    <img
-                      src={siteData.screenshot}
-                      alt="Website screenshot"
-                      className="site-screenshot"
-                    />
-                  </div>
-                ) : (
-                  <div className="empty-state">No screenshot available</div>
-                )}
-                {siteData.title && (
-                  <div className="site-meta-row">
-                    <div className="site-meta-label">Page Title</div>
-                    <div className="site-meta-value">{siteData.title}</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Scores & Metrics */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div className="card">
-                  <h3 className="card-title" style={{ marginBottom: 14 }}>Performance Scores</h3>
-                  <div className="gauges-grid">
-                    <ScoreGauge label="Performance" score={siteData.perfScore} icon={Gauge} />
-                    <ScoreGauge label="SEO" score={siteData.seoScore} icon={Zap} />
-                    <ScoreGauge label="Accessibility" score={siteData.a11yScore} icon={CheckCircle} />
-                    <ScoreGauge label="Mobile Ready" score={siteData.mobileViewport ? 100 : 20} icon={Smartphone} />
-                  </div>
+                  ) : (
+                    <div className="no-screenshot">
+                      <Monitor size={32} color="var(--border)" />
+                      <div>No screenshot available</div>
+                      <a href={siteUrl} target="_blank" rel="noreferrer" className="btn btn--ghost btn--sm" style={{ marginTop: 8 }}>
+                        <ExternalLink size={13} /> Open site manually
+                      </a>
+                    </div>
+                  )}
+                  {siteData.title && (
+                    <div className="site-meta-row">
+                      <div className="site-meta-label">Page Title</div>
+                      <div className="site-meta-value">{siteData.title}</div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="card">
-                  <h3 className="card-title" style={{ marginBottom: 12 }}>Speed Metrics</h3>
-                  <div className="metrics-grid">
-                    <div className="metric-item">
-                      <div className="metric-label">First Paint</div>
-                      <div className="metric-value">{siteData.fcp || '—'}</div>
-                    </div>
-                    <div className="metric-item">
-                      <div className="metric-label">Largest Paint</div>
-                      <div className="metric-value">{siteData.lcp || '—'}</div>
-                    </div>
-                    <div className="metric-item">
-                      <div className="metric-label">Blocking Time</div>
-                      <div className="metric-value">{siteData.tbt || '—'}</div>
-                    </div>
-                    <div className="metric-item">
-                      <div className="metric-label">Layout Shift</div>
-                      <div className="metric-value">{siteData.cls || '—'}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {siteData.opportunities?.length > 0 && (
+                {/* Scores + metrics */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div className="card">
-                    <h3 className="card-title" style={{ marginBottom: 12 }}>⚡ Top Opportunities</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {siteData.opportunities.map((op, i) => (
-                        <div key={i} className="opportunity-item">
-                          <div className="opportunity-title">{op.title}</div>
+                    <h3 className="card-title" style={{ marginBottom: 14 }}>Performance Scores</h3>
+                    <div className="gauges-grid">
+                      <ScoreGauge label="Performance" score={siteData.perfScore} icon={Gauge} />
+                      <ScoreGauge label="SEO" score={siteData.seoScore} icon={Zap} />
+                      <ScoreGauge label="Accessibility" score={siteData.a11yScore} icon={CheckCircle} />
+                      <ScoreGauge label="Mobile" score={siteData.mobileScore} icon={Smartphone} />
+                    </div>
+                  </div>
+
+                  <div className="card">
+                    <h3 className="card-title" style={{ marginBottom: 12 }}>Speed Metrics</h3>
+                    <div className="metrics-grid">
+                      {[
+                        { label: 'First Paint', value: siteData.fcp },
+                        { label: 'Largest Paint', value: siteData.lcp },
+                        { label: 'Blocking Time', value: siteData.tbt },
+                        { label: 'Layout Shift', value: siteData.cls },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="metric-item">
+                          <div className="metric-label">{label}</div>
+                          <div className="metric-value">{value || '—'}</div>
                         </div>
                       ))}
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* Audit progress bar */}
-          {!loading && (
-            <div className="audit-header-bar" style={{ marginTop: 16 }}>
-              <div className="audit-meta">
-                Auditing: <strong style={{ color: '#cc1a1a' }}>{companyName || url}</strong>
-                <span className="audit-progress">({answered}/{total} answered)</span>
-              </div>
-              {answered > 0 && (
-                <div className="audit-score-bar">
-                  <span style={{ color: scoreLabel.color, fontWeight: 700, fontSize: 20 }}>{score}/10</span>
-                  <span className="score-label-text" style={{ color: scoreLabel.color }}>{scoreLabel.text}</span>
+                  {siteData.opportunities?.length > 0 && (
+                    <div className="card">
+                      <h3 className="card-title" style={{ marginBottom: 12 }}>⚡ Top Issues Found</h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {siteData.opportunities.map((title, i) => (
+                          <div key={i} className="opportunity-item">{title}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </AuditErrorBoundary>
 
           {/* Checklist */}
           {!loading && (
-            <div className="checklist-grid" style={{ marginTop: 12 }}>
-              {CHECKLIST.map(item => (
-                <div key={item.id} className={`checklist-item ${checks[item.id] ? `checklist-item--${checks[item.id]}` : ''}`}>
-                  <div className="checklist-question"><span>{item.label}</span></div>
-                  <p className="checklist-tip">{item.tip}</p>
-                  <div className="checklist-btns">
-                    <button className={`check-btn check-btn--yes ${checks[item.id] === 'yes' ? 'active' : ''}`} onClick={() => setCheck(item.id, 'yes')}>
-                      <CheckCircle size={16} /> Yes
-                    </button>
-                    <button className={`check-btn check-btn--no ${checks[item.id] === 'no' ? 'active' : ''}`} onClick={() => setCheck(item.id, 'no')}>
-                      <XCircle size={16} /> No
-                    </button>
-                    <button className={`check-btn check-btn--unsure ${checks[item.id] === 'unsure' ? 'active' : ''}`} onClick={() => setCheck(item.id, 'unsure')}>
-                      <Circle size={16} /> Unsure
+            <>
+              <div className="audit-header-bar" style={{ marginTop: 16 }}>
+                <div className="audit-meta">
+                  Auditing: <strong style={{ color: '#cc1a1a' }}>{companyName || url}</strong>
+                  <span className="audit-progress">({answered}/{CHECKLIST.length} answered)</span>
+                </div>
+                {answered > 0 && (
+                  <div className="audit-score-bar">
+                    <span style={{ color: scoreLabel.color, fontWeight: 700, fontSize: 20 }}>{score}/10</span>
+                    <span className="score-label-text" style={{ color: scoreLabel.color }}>{scoreLabel.text}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="checklist-grid" style={{ marginTop: 12 }}>
+                {CHECKLIST.map(item => (
+                  <div key={item.id} className={`checklist-item ${checks[item.id] ? `checklist-item--${checks[item.id]}` : ''}`}>
+                    <div className="checklist-question">{item.label}</div>
+                    <p className="checklist-tip">{item.tip}</p>
+                    <div className="checklist-btns">
+                      <button className={`check-btn check-btn--yes ${checks[item.id] === 'yes' ? 'active' : ''}`} onClick={() => setCheck(item.id, 'yes')}>
+                        <CheckCircle size={14} /> Yes
+                      </button>
+                      <button className={`check-btn check-btn--no ${checks[item.id] === 'no' ? 'active' : ''}`} onClick={() => setCheck(item.id, 'no')}>
+                        <XCircle size={14} /> No
+                      </button>
+                      <button className={`check-btn check-btn--unsure ${checks[item.id] === 'unsure' ? 'active' : ''}`} onClick={() => setCheck(item.id, 'unsure')}>
+                        <Circle size={14} /> Unsure
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="card" style={{ marginTop: 16 }}>
+                <h3 className="card-title" style={{ marginBottom: 12 }}>Audit Notes</h3>
+                <textarea className="input textarea" rows={4} placeholder="Observations, pitch angles, red flags..." value={notes} onChange={e => setNotes(e.target.value)} />
+              </div>
+
+              {answered >= 5 && (
+                <div className="audit-summary card" style={{ marginTop: 16 }}>
+                  <div className="audit-summary-left">
+                    <div className="summary-big" style={{ color: scoreLabel.color }}>{score}<span>/10</span></div>
+                    <div className="summary-verdict" style={{ color: scoreLabel.color }}>{scoreLabel.text}</div>
+                    <div className="summary-counts">
+                      <span className="count-yes">✓ {yesCount} passing</span>
+                      <span className="count-no">✗ {noCount} failing</span>
+                    </div>
+                  </div>
+                  <div className="audit-summary-right">
+                    <p style={{ color: 'var(--text2)', marginBottom: 12, fontSize: 13 }}>
+                      {noCount > 0
+                        ? `${noCount} area${noCount > 1 ? 's' : ''} where Monsta Media can deliver serious value.`
+                        : 'Brand looks solid. Look for SEO gaps or vehicle wrap opportunities.'}
+                    </p>
+                    <button className="btn btn--primary" onClick={copyReport}>
+                      <ClipboardList size={15} /> Copy Full Report
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {!loading && (
-            <div className="card" style={{ marginTop: 16 }}>
-              <h3 className="card-title" style={{ marginBottom: 12 }}>Audit Notes</h3>
-              <textarea
-                className="input textarea"
-                rows={5}
-                placeholder="Add observations, specific issues, or pitch angles..."
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-              />
-            </div>
-          )}
-
-          {!loading && answered >= 5 && (
-            <div className="audit-summary card" style={{ marginTop: 16 }}>
-              <div className="audit-summary-left">
-                <div className="summary-big" style={{ color: scoreLabel.color }}>{score}<span>/10</span></div>
-                <div className="summary-verdict" style={{ color: scoreLabel.color }}>{scoreLabel.text}</div>
-                <div className="summary-counts">
-                  <span className="count-yes">✓ {yesCount} passing</span>
-                  <span className="count-no">✗ {noCount} failing</span>
-                </div>
-              </div>
-              <div className="audit-summary-right">
-                <p style={{ color: '#aaa', marginBottom: 12 }}>
-                  {noCount > 0
-                    ? `${noCount} area${noCount > 1 ? 's' : ''} where Monsta Media can deliver serious value.`
-                    : 'This brand looks solid. Look for subtle SEO or vehicle wrap opportunities.'}
-                </p>
-                <button className="btn btn--primary" onClick={copyReport}>
-                  <ClipboardList size={15} /> Copy Full Report
-                </button>
-              </div>
-            </div>
+              )}
+            </>
           )}
         </>
       )}

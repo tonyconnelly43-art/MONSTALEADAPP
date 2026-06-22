@@ -1,20 +1,131 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useLeads } from '../context/LeadsContext';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, ExternalLink, Trash2, Edit } from 'lucide-react';
+import { Search, Filter, ExternalLink, Trash2, Edit, Upload, CheckCircle, X } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 import ScoreBadge from '../components/ScoreBadge';
 import { INDUSTRIES, STATUSES } from '../data/mockLeads';
 
+// Map common Facebook Lead Ad / generic CSV column names to our lead fields
+const FB_FIELD_MAP = {
+  // Facebook Lead Ads export columns
+  'full_name': 'companyName',
+  'company_name': 'companyName',
+  'business_name': 'companyName',
+  'name': 'companyName',
+  'email': 'email',
+  'email_address': 'email',
+  'phone_number': 'phone',
+  'phone': 'phone',
+  'city': 'city',
+  'state': 'state',
+  'website': 'website',
+  'industry': 'industry',
+  'notes': 'notes',
+};
+
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  // Parse header row — handle quoted fields
+  function parseLine(line) {
+    const result = [];
+    let cur = '', inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuote = !inQuote; }
+      else if (ch === ',' && !inQuote) { result.push(cur.trim()); cur = ''; }
+      else { cur += ch; }
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  const headers = parseLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''));
+
+  return lines.slice(1).map(line => {
+    const cols = parseLine(line);
+    const raw = {};
+    headers.forEach((h, i) => { raw[h] = cols[i] || ''; });
+
+    const lead = {
+      companyName: '',
+      email: '',
+      phone: '',
+      city: '',
+      state: '',
+      website: '',
+      industry: 'HVAC',
+      notes: '',
+      status: 'New',
+      opportunityScore: 5,
+    };
+
+    // Map known fields
+    for (const [csvCol, leadField] of Object.entries(FB_FIELD_MAP)) {
+      if (raw[csvCol]) lead[leadField] = raw[csvCol];
+    }
+
+    // Fallback: if companyName still empty, try first non-empty column
+    if (!lead.companyName) {
+      lead.companyName = Object.values(raw).find(v => v) || 'Unknown';
+    }
+
+    // Normalize industry if it matches our list
+    const matchedIndustry = INDUSTRIES.find(ind => ind.toLowerCase() === lead.industry.toLowerCase());
+    if (matchedIndustry) lead.industry = matchedIndustry;
+
+    return lead;
+  }).filter(l => l.companyName && l.companyName !== 'Unknown');
+}
+
 export default function LeadDatabase() {
-  const { leads, deleteLead } = useLeads();
+  const { leads, deleteLead, addLead } = useLeads();
   const navigate = useNavigate();
+  const fileRef = useRef();
   const [search, setSearch] = useState('');
   const [filterIndustry, setFilterIndustry] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCity, setFilterCity] = useState('');
   const [minScore, setMinScore] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [importResult, setImportResult] = useState(null); // { count, skipped }
+  const [importError, setImportError] = useState('');
+
+  function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.endsWith('.csv')) {
+      setImportError('Please select a .csv file.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const parsed = parseCSV(ev.target.result);
+        if (parsed.length === 0) {
+          setImportError('No valid leads found in that file. Make sure it has a header row.');
+          return;
+        }
+        // Skip duplicates by email or company+phone
+        const existing = new Set(leads.map(l => l.email?.toLowerCase()).filter(Boolean));
+        let added = 0, skipped = 0;
+        parsed.forEach(lead => {
+          if (lead.email && existing.has(lead.email.toLowerCase())) { skipped++; return; }
+          addLead(lead);
+          if (lead.email) existing.add(lead.email.toLowerCase());
+          added++;
+        });
+        setImportResult({ count: added, skipped });
+        setImportError('');
+      } catch {
+        setImportError('Could not read that file. Make sure it\'s a valid CSV.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
 
   const filtered = leads.filter(l => {
     const q = search.toLowerCase();
@@ -38,8 +149,28 @@ export default function LeadDatabase() {
           <h1 className="page-title">Lead Database</h1>
           <p className="page-subtitle">{filtered.length} of {leads.length} leads</p>
         </div>
-        <button className="btn btn--primary" onClick={() => navigate('/add')}>+ Add Lead</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileChange} />
+          <button className="btn btn--ghost" onClick={() => { setImportResult(null); setImportError(''); fileRef.current.click(); }}>
+            <Upload size={15} /> Import CSV
+          </button>
+          <button className="btn btn--primary" onClick={() => navigate('/add')}>+ Add Lead</button>
+        </div>
       </div>
+
+      {importResult && (
+        <div className="import-banner import-banner--success">
+          <CheckCircle size={16} />
+          <span>Imported <strong>{importResult.count}</strong> leads{importResult.skipped > 0 ? ` (${importResult.skipped} duplicates skipped)` : ''}.</span>
+          <button className="icon-btn" onClick={() => setImportResult(null)}><X size={14} /></button>
+        </div>
+      )}
+      {importError && (
+        <div className="import-banner import-banner--error">
+          <span>{importError}</span>
+          <button className="icon-btn" onClick={() => setImportError('')}><X size={14} /></button>
+        </div>
+      )}
 
       {/* Search bar */}
       <div className="search-bar">

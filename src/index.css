@@ -1147,6 +1147,28 @@ html, body, #root {
   .iframe-loading, .iframe-blocked { height: 360px; }
 }
 
+/* ============ IMPORT BANNER ============ */
+.import-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.import-banner--success {
+  background: rgba(57, 211, 83, 0.12);
+  border: 1px solid rgba(57, 211, 83, 0.3);
+  color: #39d353;
+}
+.import-banner--error {
+  background: rgba(255, 68, 68, 0.12);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  color: #ff4444;
+}
+.import-banner span { flex: 1; }
+
 /* ============ CONTACT FINDER ============ */
 .contact-section-label {
   display: flex;

@@ -7,6 +7,7 @@ import LeadDetail from './pages/LeadDetail';
 import AddLead from './pages/AddLead';
 import BrandAudit from './pages/BrandAudit';
 import Outreach from './pages/Outreach';
+import AdPerformance from './pages/AdPerformance';
 import './index.css';
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/add" element={<AddLead />} />
             <Route path="/audit" element={<BrandAudit />} />
             <Route path="/outreach" element={<Outreach />} />
+            <Route path="/ads" element={<AdPerformance />} />
           </Routes>
         </Layout>
       </BrowserRouter>

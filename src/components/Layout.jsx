@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Database, PlusCircle, Zap, MessageSquare, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Database, PlusCircle, Zap, MessageSquare, BarChart2, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 
 const BASE = '/MONSTALEADAPP';
@@ -10,6 +10,7 @@ const nav = [
   { to: '/add', label: 'Add Lead', icon: PlusCircle },
   { to: '/audit', label: 'Brand Audit', icon: Zap },
   { to: '/outreach', label: 'Outreach', icon: MessageSquare },
+  { to: '/ads', label: 'Ad Performance', icon: BarChart2 },
 ];
 
 function MascotImage() {

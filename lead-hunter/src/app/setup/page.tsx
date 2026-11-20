@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const KEYS = [
   { env: "GOOGLE_PLACES_API_KEY", required: "Required for live discovery", detail: "Google Cloud → enable “Places API (New)” → create an API key → restrict it to that API → set a daily quota. Text Search with phone + website fields is billed at the Enterprise tier (about $35 per 1,000 requests, with a free monthly allowance). A 25-business pilot uses 2 requests." },
   { env: "PLACES_DAILY_REQUEST_CAP", required: "Optional (default 20)", detail: "App-side ceiling on billable Places requests per day. It is kept in server memory until Milestone 3, so the Google Cloud quota on the key is your hard limit." },
-  { env: "PAGESPEED_API_KEY", required: "Optional (Milestone 4)", detail: "Free. Raises the PageSpeed Insights quota for mobile and performance checks." },
+  { env: "PAGESPEED_API_KEY", required: "Optional", detail: "Free key from Google Cloud (enable the PageSpeed Insights API). When set, each website analysis also records a mobile performance score, shown for information only. Analyses take about 10–30 seconds longer." },
   { env: "ANTHROPIC_API_KEY", required: "Optional (Milestone 5)", detail: "Only for LLM-written audits and drafts. Template mode is free. Roughly $0.06 per prospect on Claude Opus 5.5, or about $0.002 on Claude Haiku 5.5." },
   { env: "APP_PASSWORD", required: "Required on Vercel", detail: "Shared team password. A Vercel deployment without it stays locked, so it can't run up API costs if the URL leaks. Locally, the app is open when this is unset." },
   { env: "SESSION_SECRET", required: "Optional", detail: "Random string used to sign sign-in cookies (e.g. openssl rand -base64 32). If unset, a key derived from APP_PASSWORD is used, so changing the password signs everyone out." },
@@ -47,7 +47,9 @@ export default function SetupPage() {
         <h2 className="mb-1 font-bold text-ink-100">Data &amp; outreach policy</h2>
         <ul className="list-disc space-y-1 pl-5">
           <li>Businesses come only from official provider APIs. No scraping of listing sites, and no invented businesses outside the labeled sample set.</li>
-          <li>Website checks read only publicly accessible pages, follow robots.txt, and record evidence. Anything that can&apos;t be observed is recorded as &ldquo;unknown&rdquo;.</li>
+          <li>Website checks read at most two public pages per site (homepage plus one contact or about page) and the favicon. They identify themselves as &ldquo;MonstaLeadHunter&rdquo;, honor robots.txt, and never log in, submit forms or crawl further.</li>
+          <li>Every finding records its evidence and confidence. Anything that can&apos;t be observed, such as content built by JavaScript, is recorded as &ldquo;unknown&rdquo; and earns no points.</li>
+          <li>The fetcher refuses private and internal network addresses, so a listing can&apos;t point the server at internal systems.</li>
           <li>The app never sends emails or messages. Outreach drafts are for you to review and send yourself.</li>
         </ul>
       </section>

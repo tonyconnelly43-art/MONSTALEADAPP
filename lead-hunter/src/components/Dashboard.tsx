@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Database, HardDrive, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Database, HardDrive, Loader2, ScanSearch, Trash2, Upload } from "lucide-react";
+import { analyzeProspect, canAnalyze } from "@/lib/store/analyze";
+import type { Prospect } from "@/lib/types";
 import { clearBrowserProspects, readBrowserProspects } from "@/lib/store/localStore";
 import { PROSPECT_STATUSES } from "@/lib/types";
 import { scoreProspect } from "@/lib/scoring/rubric";
@@ -66,6 +68,7 @@ export function Dashboard() {
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-ink-800 px-2.5 py-1 text-ink-300" title="Set DATABASE_URL to share prospects across devices and teammates."><HardDrive className="h-3 w-3" /> Saved in this browser only</span>
           )}
+          {store && <BulkAnalyze prospects={prospects} />}
           {rows.length > 0 && PROSPECT_STATUSES.map((s) => (
             <span key={s} className="rounded-full border border-ink-700 px-2.5 py-1 text-ink-300">
               {s}: <span className="font-semibold text-ink-100">{prospects.filter((p) => p.status === s).length}</span>
@@ -140,5 +143,45 @@ function BrowserImport() {
         </button>
       )}
     </div>
+  );
+}
+
+/** Analyzes every real prospect with a website that hasn't been analyzed yet, two at a time. */
+function BulkAnalyze({ prospects }: { prospects: Prospect[] }) {
+  const { store } = useProspects();
+  const [progress, setProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const pending = prospects.filter((p) => !p.analysis && canAnalyze(p).ok);
+  if (!store || (pending.length === 0 && !progress)) return null;
+
+  async function run() {
+    if (!store) return;
+    const queue = [...pending];
+    let done = 0;
+    let failed = 0;
+    setProgress({ done, total: queue.length, failed });
+    const worker = async () => {
+      for (let p = queue.shift(); p; p = queue.shift()) {
+        try {
+          await analyzeProspect(store, p);
+        } catch {
+          failed++;
+        }
+        done++;
+        setProgress({ done, total: done + queue.length, failed });
+      }
+    };
+    await Promise.all([worker(), worker()]);
+  }
+
+  const running = progress && progress.done < progress.total;
+  return (
+    <button className="inline-flex items-center gap-1 rounded-full border border-sky-400/40 px-2.5 py-1 text-sky-300 hover:bg-sky-400/10 disabled:opacity-60" onClick={run} disabled={Boolean(running)}>
+      {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <ScanSearch className="h-3 w-3" />}
+      {running
+        ? `Analyzing ${progress.done}/${progress.total}…`
+        : progress && pending.length === 0
+          ? `Analyzed ${progress.done}${progress.failed ? ` (${progress.failed} failed)` : ""}`
+          : `Analyze ${pending.length} website${pending.length === 1 ? "" : "s"}`}
+    </button>
   );
 }

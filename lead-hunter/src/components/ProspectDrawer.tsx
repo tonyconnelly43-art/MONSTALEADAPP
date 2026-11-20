@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import { X, RefreshCw, Loader2, ExternalLink, Phone, Globe, MapPin, Star, AlertTriangle, CheckCircle2, XCircle, HelpCircle, Lock } from "lucide-react";
+import { X, ScanSearch, Gauge, RefreshCw, Loader2, ExternalLink, Phone, Globe, MapPin, Star, AlertTriangle, CheckCircle2, XCircle, HelpCircle, Lock } from "lucide-react";
 import { PROSPECT_STATUSES, type Finding, type FindingDimension, type Prospect } from "@/lib/types";
 import { scoreProspect, type ScoreComponent } from "@/lib/scoring/rubric";
 import { DIMENSION_LABELS, FINDING_META } from "@/lib/findings";
 import { canTransition } from "@/lib/status";
 import { useProspects } from "./ProspectsProvider";
+import { analyzeProspect, canAnalyze } from "@/lib/store/analyze";
+import type { WebsiteAnalysis } from "@/lib/types";
 import { ScoreBadge, StatusBadge, FictionalTag } from "./Badges";
 
 export function ProspectDrawer({ prospect, onClose }: { prospect: Prospect; onClose: () => void }) {
@@ -134,7 +136,10 @@ export function ProspectDrawer({ prospect, onClose }: { prospect: Prospect; onCl
 
           {/* Findings with evidence */}
           <section>
-            <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-ink-300">Website findings &amp; evidence</h3>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-bold uppercase tracking-wide text-ink-300">Website findings &amp; evidence</h3>
+              <AnalyzeButton prospect={prospect} />
+            </div>
             <Findings prospect={prospect} />
           </section>
 
@@ -208,15 +213,25 @@ const RESULT_ICON = {
 function Findings({ prospect }: { prospect: Prospect }) {
   const a = prospect.analysis;
   if (!prospect.website) return <p className="text-sm text-ink-300">No website listed — nothing to analyze. Check vehicles, signage, and social profiles manually.</p>;
-  if (!a) return <p className="text-sm text-ink-300">Not analyzed yet. Automated website analysis arrives in Milestone 4.</p>;
-  if (!a.fetched) return <p className="text-sm text-ink-300">Site could not be fetched: {a.fetchNote ?? "unknown error"}. All checks are unknown.</p>;
+  if (!a) return <p className="text-sm text-ink-300">Not analyzed yet. Use &ldquo;Analyze website&rdquo; to read the public homepage and one contact page.</p>;
+  if (!a.fetched)
+    return (
+      <p className="text-sm text-ink-300">
+        {a.fetchNote ?? "Site could not be fetched."} No findings were recorded, so the on-site checks count as unknown.
+        <span className="mt-1 block text-xs text-ink-500">Checked {new Date(a.analyzedAt).toLocaleString()}</span>
+      </p>
+    );
 
   const groups = new Map<FindingDimension, Finding[]>();
   for (const f of a.findings) groups.set(f.dimension, [...(groups.get(f.dimension) ?? []), f]);
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-ink-500">Analyzed {new Date(a.analyzedAt).toLocaleString()} · {a.url}</p>
+      <p className="text-xs text-ink-500">
+        {prospect.isFictional ? "Fictional findings" : "Analyzed"} {new Date(a.analyzedAt).toLocaleString()} · {a.pagesFetched?.length ? `Pages read: ${a.pagesFetched.join(", ")}` : a.url}
+      </p>
+      {a.fetchNote && <p className="text-xs text-amber-300">{a.fetchNote}</p>}
+      {!prospect.isFictional && <PageSpeed analysis={a} />}
       {[...groups.entries()].map(([dim, fs]) => (
         <div key={dim}>
           <h4 className="mb-1 text-xs font-semibold text-ink-300">{DIMENSION_LABELS[dim]}</h4>
@@ -296,6 +311,53 @@ function GoogleRetention({ prospect }: { prospect: Prospect }) {
         )
       )}
       {error && <p className="mt-1 text-xs text-brand-400">{error}</p>}
+    </div>
+  );
+}
+
+function AnalyzeButton({ prospect }: { prospect: Prospect }) {
+  const { store } = useProspects();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const check = canAnalyze(prospect);
+  if (!check.ok) return <span className="text-xs text-ink-500">{check.reason}</span>;
+  return (
+    <div className="flex flex-col items-end">
+      <button
+        className="btn-ghost py-1 text-xs"
+        disabled={busy || !store}
+        onClick={async () => {
+          if (!store) return;
+          setBusy(true);
+          setError(null);
+          try {
+            await analyzeProspect(store, prospect);
+          } catch (e) {
+            setError((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanSearch className="h-3.5 w-3.5" />}
+        {busy ? "Analyzing…" : prospect.analysis ? "Re-analyze" : "Analyze website"}
+      </button>
+      {error && <span className="mt-1 text-xs text-brand-400">{error}</span>}
+    </div>
+  );
+}
+
+function PageSpeed({ analysis }: { analysis: WebsiteAnalysis }) {
+  const ps = analysis.pageSpeed;
+  if (!ps) return analysis.pageSpeedNote ? <p className="text-xs text-ink-500">{analysis.pageSpeedNote}</p> : null;
+  const tone = ps.performance == null ? "text-ink-300" : ps.performance >= 90 ? "text-emerald-300" : ps.performance >= 50 ? "text-amber-300" : "text-brand-400";
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-ink-850 p-2 text-sm">
+      <span className="inline-flex items-center gap-1.5 text-ink-300"><Gauge className="h-4 w-4" /> PageSpeed (mobile)</span>
+      <span className={`font-semibold ${tone}`}>{ps.performance ?? "?"}/100</span>
+      {ps.largestContentfulPaintMs != null && <span className="text-xs text-ink-300">LCP {(ps.largestContentfulPaintMs / 1000).toFixed(1)}s</span>}
+      {ps.cumulativeLayoutShift != null && <span className="text-xs text-ink-300">CLS {ps.cumulativeLayoutShift.toFixed(2)}</span>}
+      <span className="text-xs text-ink-500">Informational: not scored in rubric v1.</span>
     </div>
   );
 }

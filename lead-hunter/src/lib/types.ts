@@ -97,6 +97,15 @@ export const FINDING_KEYS = [
 ] as const;
 export type FindingKey = (typeof FINDING_KEYS)[number];
 
+export interface PageSpeedResult {
+  strategy: "mobile";
+  /** Lighthouse performance score 0–100. */
+  performance: number | null;
+  largestContentfulPaintMs: number | null;
+  cumulativeLayoutShift: number | null;
+  fetchedAt: string;
+}
+
 export interface WebsiteAnalysis {
   analyzedAt: string;
   url: string;
@@ -104,6 +113,11 @@ export interface WebsiteAnalysis {
   fetched: boolean;
   fetchNote?: string;
   findings: Finding[];
+  /** Pages actually read (at most two). */
+  pagesFetched?: string[];
+  /** Google PageSpeed Insights (mobile). Informational; not part of rubric v1. */
+  pageSpeed?: PageSpeedResult | null;
+  pageSpeedNote?: string;
 }
 
 export interface StatusChange {

@@ -1,7 +1,7 @@
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { prospects, type NewProspectRow, type ProspectRow } from "../db/schema";
-import type { DiscoveredBusiness, Prospect, ProspectStatus } from "../types";
+import type { DiscoveredBusiness, Prospect, ProspectStatus, WebsiteAnalysis } from "../types";
 import { dedupe } from "../discovery/dedupe";
 import { canTransition } from "../status";
 import { contentExpiry } from "../prospects";
@@ -16,6 +16,7 @@ export interface ProspectRepo {
   get(id: string): Promise<Prospect | null>;
   addMany(items: Prospect[]): Promise<{ added: number; duplicates: number }>;
   update(id: string, patch: ProspectPatch): Promise<Prospect | null>;
+  setAnalysis(id: string, analysis: WebsiteAnalysis): Promise<Prospect | null>;
   setStatus(id: string, status: ProspectStatus, note?: string): Promise<{ ok: boolean; reason?: string; prospect?: Prospect }>;
   /** Replace provider details with freshly fetched ones (e.g. Google Place Details refresh). */
   refreshContent(id: string, b: DiscoveredBusiness, retentionDays: number): Promise<Prospect | null>;
@@ -115,6 +116,11 @@ export function createDbProspectRepo(db: AnyPgDb): ProspectRepo {
       if (patch.notes !== undefined) set.notes = patch.notes;
       if (patch.chainSuspected !== undefined) set.chainSuspected = patch.chainSuspected;
       const [row] = await db.update(prospects).set(set).where(eq(prospects.id, id)).returning();
+      return row ? rowToProspect(row) : null;
+    },
+
+    async setAnalysis(id, analysis) {
+      const [row] = await db.update(prospects).set({ analysis, updatedAt: new Date() }).where(eq(prospects.id, id)).returning();
       return row ? rowToProspect(row) : null;
     },
 

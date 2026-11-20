@@ -76,11 +76,26 @@ Google Maps Platform terms limit how long Places content (anything except place 
 ### Database tests
 `npm run test:db` runs repository integration tests against `TEST_DATABASE_URL`. **That database is wiped**, so use a throwaway local database only.
 
+## Status — Milestone 4 ✅
+
+- **Website analyzer** (`src/lib/analysis/`), started from **Analyze website** in a prospect's panel or **Analyze N websites** on the dashboard (two at a time).
+  - Reads robots.txt, the homepage, at most one same-site contact/about page, and `/favicon.ico` only if no icon is declared.
+  - Identifies itself as `MonstaLeadHunter/1.0`.
+  - Honors robots.txt per RFC 9309: a robots.txt that returns 5xx or can't be reached means the site is not analyzed.
+  - Limits: 10 s timeout per request, 1.5 MB per page, at most 4 redirects, each one re-checked.
+- **All 14 rubric checks** are filled from real HTML, each with evidence and a confidence level.
+  - Sites whose content is built by JavaScript get **unknown** for content checks instead of false failures.
+  - Ambiguous headlines are marked unknown for a person to judge.
+  - A Facebook or Yelp page listed as the "website" is reported as having no standalone site.
+- **SSRF protection** (`netGuard.ts`, `safeFetch.ts`): only http/https on standard ports, no credentials in URLs. Private, loopback, link-local and metadata addresses are refused, checked at connection time so a DNS answer can't be swapped in later.
+- **PageSpeed Insights** (optional, `PAGESPEED_API_KEY`): mobile performance, LCP and CLS, shown for information only and not scored in rubric v1.
+- Fictional sample businesses keep their invented findings and are never fetched.
+- Tests: `analysis.test.ts` covers the checks against synthetic HTML, plus robots rules, the network guard and the orchestrator with a stubbed network. `live.test.ts` is an opt-in live run (`LIVE_NETWORK=1`).
+
 ## Roadmap
 
 | Milestone | Scope |
 |---|---|
-| 4 | Website analyzer (robots.txt-aware, ≤2 pages, evidence and confidence) + PageSpeed Insights |
 | 5 | Mini brand audit + outreach drafts (template; optional Claude), copy or mailto only |
 | Later | CRM sync adapters, scheduled discovery (Vercel Cron), nationwide presets |
 

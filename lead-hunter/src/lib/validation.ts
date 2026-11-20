@@ -19,6 +19,18 @@ const analysisSchema = z.object({
   fetched: z.boolean(),
   fetchNote: str(1000).optional(),
   findings: z.array(findingSchema).max(50),
+  pagesFetched: z.array(str(2000)).max(5).optional(),
+  pageSpeed: z
+    .object({
+      strategy: z.literal("mobile"),
+      performance: z.number().min(0).max(100).nullable(),
+      largestContentfulPaintMs: z.number().nullable(),
+      cumulativeLayoutShift: z.number().nullable(),
+      fetchedAt: iso,
+    })
+    .nullable()
+    .optional(),
+  pageSpeedNote: str(500).optional(),
 });
 
 export const statusSchema = z.enum(PROSPECT_STATUSES);

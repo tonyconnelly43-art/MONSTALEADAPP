@@ -3,7 +3,7 @@ import type { DiscoveredBusiness, ProviderId, SearchQuery, WebsiteAnalysis } fro
 export const PILOT_MAX_RESULTS = 25;
 
 export interface CostEstimate {
-  /** Billable API requests this search is expected to make. */
+  /** Maximum billable API requests this search may make. */
   billableRequests: number;
   /** Estimated USD if the free monthly allowance is already used up. */
   estimatedUsdBeyondFreeTier: number;
@@ -17,9 +17,13 @@ export interface DiscoveryResult {
    * uses this (to demo scoring before real website analysis exists in Milestone 4).
    */
   enrichments?: Record<string, { analysis: WebsiteAnalysis | null; chainSuspected: boolean | null }>;
+  /** Industry each business was found under, keyed by sourceId (needed for multi-industry searches). */
+  industryBySourceId: Record<string, string>;
   /** Messages to show the user (limitations, empty-result reasons, etc.). */
   notes: string[];
   billableRequestsMade: number;
+  /** True when served from the server-side result cache (no API calls made). */
+  fromCache?: boolean;
 }
 
 /**

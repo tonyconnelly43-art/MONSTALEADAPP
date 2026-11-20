@@ -2,6 +2,12 @@ import "server-only";
 import type { ProviderId } from "../types";
 import type { DiscoveryProvider } from "./provider";
 import { sampleProvider } from "./sampleProvider";
+import { createGooglePlacesProvider } from "./googlePlaces";
+import { createUsageGuard } from "./usageGuard";
+
+// Module-level so the cap and cache persist across requests within one server instance.
+const placesGuard = createUsageGuard({ dailyCap: Number(process.env.PLACES_DAILY_REQUEST_CAP) || 20 });
+const googlePlaces = createGooglePlacesProvider({ apiKey: process.env.GOOGLE_PLACES_API_KEY, guard: placesGuard });
 
 /**
  * Provider registry. Add new legitimate sources here (Google Places in Milestone 2;
@@ -9,6 +15,7 @@ import { sampleProvider } from "./sampleProvider";
  */
 const providers: Partial<Record<ProviderId, DiscoveryProvider>> = {
   sample: sampleProvider,
+  google_places: googlePlaces,
 };
 
 export function getProvider(id: ProviderId): DiscoveryProvider | undefined {
@@ -28,10 +35,10 @@ export function listProviders(): ProviderInfo[] {
     { id: "sample", label: sampleProvider.label, isLive: false, available: true },
     {
       id: "google_places",
-      label: "Google Places API (live)",
+      label: googlePlaces.label,
       isLive: true,
-      available: false,
-      unavailableReason: "Coming in Milestone 2 — requires GOOGLE_PLACES_API_KEY on the server.",
+      available: googlePlaces.isConfigured(),
+      unavailableReason: googlePlaces.isConfigured() ? undefined : "Add GOOGLE_PLACES_API_KEY on the server to enable live search.",
     },
   ];
 }

@@ -26,11 +26,33 @@ Deploy on Vercel: import the repo and set **Root Directory** to `lead-hunter`.
 - Versioned scoring rubric (`/rubric`): brand opportunity 60 + business fit 40. Unknown checks never earn points.
 - Storage: browser `localStorage`, behind the `ProspectStore` interface. Data stays in this browser only until Milestone 3.
 
+## Status — Milestone 2 ✅ (waiting on the API key)
+
+- `src/lib/discovery/googlePlaces.ts`: Places API (New) Text Search provider.
+  - Field mask limited to the fields we store: name, address, phone, website, category, rating, review count, Maps URL, location, business status.
+  - Locates the city center, biases the search to that circle, then **enforces the radius** with a distance check.
+  - Skips permanently closed businesses. "All target industries" runs one page per industry and interleaves the results.
+- Cost guard:
+  - The server refuses billable searches until the user confirms a cost estimate in the UI.
+  - `PLACES_DAILY_REQUEST_CAP` (default 20) stops searches once the day's cap is reached.
+  - Identical searches and city lookups are cached for 24 hours.
+  - The cap and cache live in server memory, so the **Google Cloud quota is the hard limit**.
+- Turns on automatically when `GOOGLE_PLACES_API_KEY` is set; until then the option is shown as disabled.
+- Tested against a stubbed Google API (`googlePlaces.test.ts`). It has not yet run against live Google data.
+
+### Enabling live search
+1. Google Cloud Console: create a project and enable billing.
+2. Enable **Places API (New)**.
+3. Create an API key. Under *API restrictions* allow only Places API (New).
+4. Under *Quotas*, cap the requests per day (e.g. 100).
+5. Vercel: add `GOOGLE_PLACES_API_KEY` (and optionally `PLACES_DAILY_REQUEST_CAP`), then redeploy.
+
+Google Maps Platform terms limit how long Places content (anything except place IDs) may be stored. Milestone 3 will store place IDs durably and refresh details from Google rather than keeping them indefinitely.
+
 ## Roadmap
 
 | Milestone | Scope |
 |---|---|
-| 2 | Google Places API (New) provider: field-masked Text Search, 25-result cap, confirm-before-billing, daily request cap, 24h cache |
 | 3 | Postgres (Neon) store + password protection |
 | 4 | Website analyzer (robots.txt-aware, ≤2 pages, evidence and confidence) + PageSpeed Insights |
 | 5 | Mini brand audit + outreach drafts (template; optional Claude), copy or mailto only |

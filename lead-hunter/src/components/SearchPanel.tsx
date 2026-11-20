@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Search, Loader2, Info } from "lucide-react";
+import { Search, Loader2, Info, DollarSign } from "lucide-react";
 import { PRESET_INDUSTRIES, type ProviderId, type Prospect } from "@/lib/types";
 import { ALL_INDUSTRIES, DEFAULT_QUERY } from "@/lib/discovery/query";
 import { PILOT_MAX_RESULTS } from "@/lib/discovery/provider";
 import { useProspects } from "./ProspectsProvider";
 
+interface CostEstimate { billableRequests: number; estimatedUsdBeyondFreeTier: number; explanation: string }
 interface ProviderInfo { id: ProviderId; label: string; isLive: boolean; available: boolean; unavailableReason?: string }
 
 const CUSTOM = "__custom__";
@@ -20,6 +21,7 @@ export function SearchPanel() {
   const [provider, setProvider] = useState<ProviderId>("sample");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<{ tone: "info" | "error"; text: string }[]>([]);
+  const [pendingEstimate, setPendingEstimate] = useState<CostEstimate | null>(null);
 
   useEffect(() => {
     fetch("/api/providers").then((r) => r.json()).then((d) => setProviders(d.providers)).catch(() => {});
@@ -27,18 +29,25 @@ export function SearchPanel() {
 
   const industry = industryChoice === CUSTOM ? customIndustry : industryChoice;
 
-  async function run(e: React.FormEvent) {
-    e.preventDefault();
+  const selected = providers.find((p) => p.id === provider);
+
+  async function run(confirmBillable: boolean) {
     if (!store) return;
     setBusy(true);
     setMessages([]);
+    setPendingEstimate(null);
     try {
       const res = await fetch("/api/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, query: { ...q, industry }, confirmBillable: false }),
+        body: JSON.stringify({ provider, query: { ...q, industry }, confirmBillable }),
       });
       const data = await res.json();
+      if (res.status === 409 && data.estimate) {
+        // Billable search: show the cost estimate and wait for explicit confirmation.
+        setPendingEstimate(data.estimate as CostEstimate);
+        return;
+      }
       if (!res.ok) {
         const issues = (data.issues as { message: string }[] | undefined)?.map((i) => i.message).join("; ");
         setMessages([{ tone: "error", text: issues || data.error || "Search failed." }]);
@@ -47,7 +56,7 @@ export function SearchPanel() {
       const { added, duplicates } = store.addMany(data.prospects as Prospect[]);
       const totalDupes = duplicates + (data.duplicatesRemoved as number);
       setMessages([
-        { tone: "info", text: `Found ${data.prospects.length} · added ${added} new · ${totalDupes} duplicate${totalDupes === 1 ? "" : "s"} skipped · ${data.billableRequestsMade} billable API calls.` },
+        { tone: "info", text: `Found ${data.prospects.length} · added ${added} new · ${totalDupes} duplicate${totalDupes === 1 ? "" : "s"} skipped · ${data.billableRequestsMade} billable API call${data.billableRequestsMade === 1 ? "" : "s"}${data.fromCache ? " (cached)" : ""}.` },
         ...(data.notes as string[]).map((t) => ({ tone: "info" as const, text: t })),
       ]);
     } catch {
@@ -58,7 +67,7 @@ export function SearchPanel() {
   }
 
   return (
-    <form onSubmit={run} className="card p-4 sm:p-5">
+    <form onSubmit={(e) => { e.preventDefault(); run(false); }} className="card p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-bold">Discover businesses</h2>
         <div className="flex flex-wrap gap-1.5 text-xs">
@@ -100,7 +109,7 @@ export function SearchPanel() {
         )}
         <div className={industryChoice === CUSTOM ? "col-span-2 md:col-span-2" : "col-span-2 md:col-span-3"}>
           <label className="label" htmlFor="provider">Data source</label>
-          <select id="provider" className="field" value={provider} onChange={(e) => setProvider(e.target.value as ProviderId)}>
+          <select id="provider" className="field" value={provider} onChange={(e) => { setProvider(e.target.value as ProviderId); setPendingEstimate(null); }}>
             {(providers.length ? providers : [{ id: "sample", label: "Sample data (fictional, no API calls)", available: true, isLive: false }]).map((p) => (
               <option key={p.id} value={p.id} disabled={!p.available}>
                 {p.label}{!p.available ? " — not configured" : ""}
@@ -117,13 +126,35 @@ export function SearchPanel() {
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="flex items-center gap-1.5 text-xs text-ink-300">
           <Info className="h-3.5 w-3.5" aria-hidden />
-          {provider === "sample" ? "Sample mode: no API calls, no cost." : "Live search: you will see a cost estimate before anything is billed."}
+          {provider === "sample"
+            ? providers.some((p) => p.id === "google_places" && !p.available)
+              ? "Sample mode: no API calls, no cost. Live Google search turns on once an API key is added (see Setup)."
+              : "Sample mode: no API calls, no cost."
+            : selected?.available
+              ? "Live search: you'll see a cost estimate and confirm before anything is billed."
+              : selected?.unavailableReason}
         </p>
-        <button className="btn-primary" disabled={busy || !store}>
+        <button className="btn-primary" disabled={busy || !store || pendingEstimate !== null || (selected ? !selected.available : false)}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
           Run search
         </button>
       </div>
+
+      {pendingEstimate && (
+        <div className="mt-4 rounded-lg border border-amber-400/40 bg-amber-400/10 p-4 text-sm" role="alertdialog" aria-label="Confirm billable search">
+          <p className="flex items-center gap-2 font-semibold text-amber-200">
+            <DollarSign className="h-4 w-4" /> This search uses the paid Google Places API
+          </p>
+          <p className="mt-1 text-ink-100">
+            Up to <strong>{pendingEstimate.billableRequests}</strong> billable request{pendingEstimate.billableRequests === 1 ? "" : "s"} · about <strong>${pendingEstimate.estimatedUsdBeyondFreeTier.toFixed(3)}</strong> if your free monthly allowance is used up.
+          </p>
+          <p className="mt-1 text-xs text-ink-300">{pendingEstimate.explanation}</p>
+          <div className="mt-3 flex gap-2">
+            <button type="button" className="btn-primary" onClick={() => run(true)} disabled={busy}>Confirm &amp; search</button>
+            <button type="button" className="btn-ghost" onClick={() => setPendingEstimate(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {messages.length > 0 && (
         <ul className="mt-3 space-y-1 text-sm" aria-live="polite">

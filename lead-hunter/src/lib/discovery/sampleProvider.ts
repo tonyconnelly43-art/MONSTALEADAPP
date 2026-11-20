@@ -18,7 +18,7 @@ export const sampleProvider: DiscoveryProvider = {
     const inPilot = q.state.toUpperCase() === "OH" && PILOT_CITIES.some((c) => c.toLowerCase() === q.city.trim().toLowerCase());
     if (!inPilot) {
       notes.push(`Sample data only covers the Northeast Ohio pilot area (${PILOT_CITIES.join(", ")}). Connect Google Places (Milestone 2) for nationwide search.`);
-      return { businesses: [], notes, billableRequestsMade: 0 };
+      return { businesses: [], industryBySourceId: {}, notes, billableRequestsMade: 0 };
     }
     notes.push("Radius is simulated: sample search returns all pilot-area communities.");
     const recs = SAMPLE_RECORDS.filter(
@@ -31,13 +31,9 @@ export const sampleProvider: DiscoveryProvider = {
     return {
       businesses: recs.map((r) => ({ ...r.business })),
       enrichments,
+      industryBySourceId: Object.fromEntries(recs.map((r) => [r.business.sourceId, r.industry])),
       notes,
       billableRequestsMade: 0,
     };
   },
 };
-
-/** Industry lookup for sample records (sample businesses carry their industry). */
-export function sampleIndustryFor(sourceId: string): string | undefined {
-  return SAMPLE_RECORDS.find((r) => r.business.sourceId === sourceId)?.industry;
-}

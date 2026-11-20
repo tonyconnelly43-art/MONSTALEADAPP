@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 
 /** Shows only whether each key is set — never the value. */
 const KEYS = [
-  { env: "GOOGLE_PLACES_API_KEY", required: "For live discovery (Milestone 2)", detail: "Google Cloud → enable “Places API (New)” → create an API key → restrict it to that API → set a daily quota. Text Search with phone + website fields is billed at the Enterprise tier (about $35 per 1,000 requests, with a free monthly allowance). A 25-business pilot uses 2 requests." },
+  { env: "GOOGLE_PLACES_API_KEY", required: "Required for live discovery", detail: "Google Cloud → enable “Places API (New)” → create an API key → restrict it to that API → set a daily quota. Text Search with phone + website fields is billed at the Enterprise tier (about $35 per 1,000 requests, with a free monthly allowance). A 25-business pilot uses 2 requests." },
+  { env: "PLACES_DAILY_REQUEST_CAP", required: "Optional (default 20)", detail: "App-side ceiling on billable Places requests per day. It is kept in server memory until Milestone 3, so the Google Cloud quota on the key is your hard limit." },
   { env: "PAGESPEED_API_KEY", required: "Optional (Milestone 4)", detail: "Free. Raises the PageSpeed Insights quota for mobile and performance checks." },
   { env: "ANTHROPIC_API_KEY", required: "Optional (Milestone 5)", detail: "Only for LLM-written audits and drafts. Template mode is free. Roughly $0.06 per prospect on Claude Opus 5.5, or about $0.002 on Claude Haiku 5.5." },
   { env: "DATABASE_URL", required: "Milestone 3", detail: "Postgres (e.g. Neon from the Vercel Marketplace). Until then, prospects are saved in this browser only." },

@@ -1,4 +1,4 @@
-import type { Prospect, ProspectStatus } from "../types";
+import type { OutreachDraft, Prospect, ProspectStatus } from "../types";
 
 export type StorageMode = "database" | "browser";
 
@@ -16,7 +16,7 @@ export interface ProspectStore {
   reload(): Promise<void>;
   /** Save newly discovered prospects (browser mode; the server saves them itself in database mode). */
   addMany(prospects: Prospect[]): Promise<{ added: number; duplicates: number }>;
-  update(id: string, patch: Partial<Pick<Prospect, "notes" | "chainSuspected">>): Promise<void>;
+  update(id: string, patch: Partial<Pick<Prospect, "notes" | "chainSuspected">> & { draft?: OutreachDraft }): Promise<void>;
   setStatus(id: string, status: ProspectStatus, note?: string): Promise<{ ok: boolean; reason?: string }>;
   remove(ids: string[]): Promise<void>;
   /** Replace one prospect in the snapshot with a server-updated version. */

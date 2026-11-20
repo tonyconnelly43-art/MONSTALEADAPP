@@ -92,11 +92,26 @@ Google Maps Platform terms limit how long Places content (anything except place 
 - Fictional sample businesses keep their invented findings and are never fetched.
 - Tests: `analysis.test.ts` covers the checks against synthetic HTML, plus robots rules, the network guard and the orchestrator with a stubbed network. `live.test.ts` is an opt-in live run (`LIVE_NETWORK=1`).
 
+## Status — Milestone 5 ✅
+
+- **Mini brand audit + outreach draft** for **qualified** prospects (`src/lib/outreach/`), shown in the prospect panel.
+  - **Audit:** a headline, observed opportunities each shown with the recorded evidence, what's already working, recommended services, and an explicit "uncertain / not checked" list. Vehicle wraps are always "to be confirmed", because they can't be seen from a website.
+  - **Template mode (free):** deterministic and built only from recorded findings.
+  - **Claude mode (optional, `ANTHROPIC_API_KEY`):**
+    - Asks for cost confirmation first. Uses structured outputs and server-side refusal fallbacks.
+    - Website text is passed as untrusted data, not instructions.
+    - Output is rejected unless every point cites a recorded finding with the matching result, and rejected if it includes links, prices or guarantees.
+    - Evidence, uncertainties and recommended services always come from our own records.
+  - The signature, mailing address and opt-out line are added by code (`SENDER_*` env vars, otherwise `[Your …]` placeholders).
+- **Never sends anything.** Drafts are editable and saved.
+  - **Copy** and **Open in my email app** (`mailto:`) unlock only after the prospect is *Approved for Outreach*, never for fictional samples, and only once edits are saved.
+  - You send the email yourself, then mark the prospect *Contacted*.
+- Stored in a new `outreach` column (`drizzle/0001_outreach.sql`, applied automatically at deploy).
+
 ## Roadmap
 
 | Milestone | Scope |
 |---|---|
-| 5 | Mini brand audit + outreach drafts (template; optional Claude), copy or mailto only |
 | Later | CRM sync adapters, scheduled discovery (Vercel Cron), nationwide presets |
 
 ## Layout

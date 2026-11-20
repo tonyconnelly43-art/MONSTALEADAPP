@@ -31,6 +31,7 @@ export function toProspect(
     analysis: enrichment?.analysis ?? null,
     contentExpiresAt: contentExpiry(b, retentionDays),
     contentExpired: false,
+    outreach: null,
     status: "New",
     statusHistory: [{ status: "New", at: now, note: `Discovered via ${b.provider}` }],
     notes: "",

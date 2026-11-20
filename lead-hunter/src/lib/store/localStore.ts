@@ -11,7 +11,7 @@ export function readBrowserProspects(): Prospect[] {
     const raw = window.localStorage.getItem(KEY);
     const list = raw ? (JSON.parse(raw) as Prospect[]) : [];
     // Older saves predate the retention fields.
-    return list.map((p) => ({ ...p, contentExpiresAt: p.contentExpiresAt ?? null, contentExpired: p.contentExpired ?? false }));
+    return list.map((p) => ({ ...p, contentExpiresAt: p.contentExpiresAt ?? null, contentExpired: p.contentExpired ?? false, outreach: p.outreach ?? null }));
   } catch {
     return [];
   }
@@ -59,8 +59,14 @@ export function createLocalStore(): ProspectStore {
       if (unique.length) commit([...items, ...unique]);
       return { added: unique.length, duplicates };
     },
-    async update(id, patch) {
-      commit(items.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    async update(id, { draft, ...rest }) {
+      commit(
+        items.map((p) =>
+          p.id !== id
+            ? p
+            : { ...p, ...rest, ...(draft && p.outreach ? { outreach: { ...p.outreach, draft, editedAt: new Date().toISOString() } } : {}) },
+        ),
+      );
     },
     async setStatus(id, status, note) {
       const p = items.find((x) => x.id === id);

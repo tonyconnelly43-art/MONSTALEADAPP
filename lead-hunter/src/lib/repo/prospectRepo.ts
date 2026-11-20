@@ -1,7 +1,7 @@
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { prospects, type NewProspectRow, type ProspectRow } from "../db/schema";
-import type { DiscoveredBusiness, Prospect, ProspectStatus, WebsiteAnalysis } from "../types";
+import type { DiscoveredBusiness, Outreach, OutreachDraft, Prospect, ProspectStatus, WebsiteAnalysis } from "../types";
 import { dedupe } from "../discovery/dedupe";
 import { canTransition } from "../status";
 import { contentExpiry } from "../prospects";
@@ -9,7 +9,7 @@ import { contentExpiry } from "../prospects";
 // Accept any Postgres driver Drizzle supports (postgres.js in prod, also usable in tests).
 type AnyPgDb = PgDatabase<PgQueryResultHKT, any>;
 
-export type ProspectPatch = Partial<Pick<Prospect, "notes" | "chainSuspected">>;
+export type ProspectPatch = Partial<Pick<Prospect, "notes" | "chainSuspected">> & { draft?: OutreachDraft };
 
 export interface ProspectRepo {
   list(): Promise<Prospect[]>;
@@ -17,6 +17,7 @@ export interface ProspectRepo {
   addMany(items: Prospect[]): Promise<{ added: number; duplicates: number }>;
   update(id: string, patch: ProspectPatch): Promise<Prospect | null>;
   setAnalysis(id: string, analysis: WebsiteAnalysis): Promise<Prospect | null>;
+  setOutreach(id: string, outreach: Outreach): Promise<Prospect | null>;
   setStatus(id: string, status: ProspectStatus, note?: string): Promise<{ ok: boolean; reason?: string; prospect?: Prospect }>;
   /** Replace provider details with freshly fetched ones (e.g. Google Place Details refresh). */
   refreshContent(id: string, b: DiscoveredBusiness, retentionDays: number): Promise<Prospect | null>;
@@ -49,6 +50,7 @@ export function rowToProspect(r: ProspectRow): Prospect {
     industry: r.industry,
     chainSuspected: r.chainSuspected,
     analysis: r.analysis ?? null,
+    outreach: r.outreach ?? null,
     status: r.status as ProspectStatus,
     statusHistory: r.statusHistory,
     notes: r.notes,
@@ -77,6 +79,7 @@ function prospectToRow(p: Prospect): NewProspectRow {
     industry: p.industry,
     chainSuspected: p.chainSuspected,
     analysis: p.analysis,
+    outreach: p.outreach ?? null,
     status: p.status,
     statusHistory: p.statusHistory,
     notes: p.notes,
@@ -115,12 +118,22 @@ export function createDbProspectRepo(db: AnyPgDb): ProspectRepo {
       const set: Partial<NewProspectRow> = { updatedAt: new Date() };
       if (patch.notes !== undefined) set.notes = patch.notes;
       if (patch.chainSuspected !== undefined) set.chainSuspected = patch.chainSuspected;
+      if (patch.draft) {
+        const current = await get(id);
+        if (!current?.outreach) return null;
+        set.outreach = { ...current.outreach, draft: patch.draft, editedAt: new Date().toISOString() };
+      }
       const [row] = await db.update(prospects).set(set).where(eq(prospects.id, id)).returning();
       return row ? rowToProspect(row) : null;
     },
 
     async setAnalysis(id, analysis) {
       const [row] = await db.update(prospects).set({ analysis, updatedAt: new Date() }).where(eq(prospects.id, id)).returning();
+      return row ? rowToProspect(row) : null;
+    },
+
+    async setOutreach(id, outreach) {
+      const [row] = await db.update(prospects).set({ outreach, updatedAt: new Date() }).where(eq(prospects.id, id)).returning();
       return row ? rowToProspect(row) : null;
     },
 

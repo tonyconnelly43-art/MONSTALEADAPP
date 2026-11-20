@@ -6,6 +6,7 @@ import { scoreProspect, type ScoreComponent } from "@/lib/scoring/rubric";
 import { DIMENSION_LABELS, FINDING_META } from "@/lib/findings";
 import { canTransition } from "@/lib/status";
 import { useProspects } from "./ProspectsProvider";
+import { OutreachPanel } from "./OutreachPanel";
 import { analyzeProspect, canAnalyze } from "@/lib/store/analyze";
 import type { WebsiteAnalysis } from "@/lib/types";
 import { ScoreBadge, StatusBadge, FictionalTag } from "./Badges";
@@ -151,8 +152,9 @@ export function ProspectDrawer({ prospect, onClose }: { prospect: Prospect; onCl
             <textarea id="notes" rows={3} className="field" value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== prospect.notes && save({ notes })} placeholder="Observations from manual review (truck wraps, signage, social…)" />
           </section>
 
-          <section className="rounded-lg border border-dashed border-ink-700 p-3 text-sm text-ink-300">
-            <strong className="text-ink-100">Mini brand audit &amp; outreach draft:</strong> coming in Milestone 5. Drafts will cite only the evidence recorded above and will never be sent automatically.
+          <section>
+            <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-ink-300">Mini brand audit &amp; outreach draft</h3>
+            <OutreachPanel prospect={prospect} score={score} />
           </section>
         </div>
       </aside>

@@ -1,5 +1,5 @@
 import { boolean, date, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import type { StatusChange, WebsiteAnalysis } from "../types";
+import type { Outreach, StatusChange, WebsiteAnalysis } from "../types";
 
 export const prospects = pgTable(
   "prospects",
@@ -29,6 +29,7 @@ export const prospects = pgTable(
     industry: text("industry").notNull(),
     chainSuspected: boolean("chain_suspected"),
     analysis: jsonb("analysis").$type<WebsiteAnalysis | null>(),
+    outreach: jsonb("outreach").$type<Outreach | null>(),
     status: text("status").notNull().default("New"),
     statusHistory: jsonb("status_history").$type<StatusChange[]>().notNull(),
     notes: text("notes").notNull().default(""),

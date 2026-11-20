@@ -35,6 +35,28 @@ const analysisSchema = z.object({
 
 export const statusSchema = z.enum(PROSPECT_STATUSES);
 
+export const draftSchema = z.object({ subject: str(200).min(1), body: str(5000).min(1) });
+
+const auditItemSchema = z.object({ text: str(500), findingKey: z.enum(FINDING_KEYS), evidence: str(2000).nullable() });
+
+export const outreachSchema = z.object({
+  generatedAt: iso,
+  method: z.enum(["template", "ai"]),
+  model: str(100).optional(),
+  rubricVersion: str(40),
+  score: z.number().min(0).max(100),
+  isFictional: z.boolean(),
+  audit: z.object({
+    headline: str(300),
+    opportunities: z.array(auditItemSchema).max(20),
+    strengths: z.array(auditItemSchema).max(20),
+    uncertainties: z.array(str(500)).max(20),
+    recommendedServices: z.array(z.object({ service: str(100), why: str(500) })).max(10),
+  }),
+  draft: draftSchema,
+  editedAt: iso.optional(),
+});
+
 /** Shape check for prospects imported from browser storage into the database. */
 export const prospectSchema = z.object({
   id: str(300),
@@ -58,11 +80,12 @@ export const prospectSchema = z.object({
   // Older browser data predates these fields.
   contentExpiresAt: iso.nullable().default(null),
   contentExpired: z.boolean().default(false),
+  outreach: outreachSchema.nullable().default(null),
   status: statusSchema,
   statusHistory: z.array(z.object({ status: statusSchema, at: str(40), note: str(500).optional() })).min(1).max(200),
   notes: str(10_000),
 });
 
 export const patchSchema = z
-  .object({ notes: str(10_000).optional(), chainSuspected: z.boolean().nullable().optional() })
-  .refine((v) => v.notes !== undefined || v.chainSuspected !== undefined, "Nothing to update");
+  .object({ notes: str(10_000).optional(), chainSuspected: z.boolean().nullable().optional(), draft: draftSchema.optional() })
+  .refine((v) => v.notes !== undefined || v.chainSuspected !== undefined || v.draft !== undefined, "Nothing to update");

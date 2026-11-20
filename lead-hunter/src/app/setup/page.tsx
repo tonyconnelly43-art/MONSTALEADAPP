@@ -9,7 +9,9 @@ const KEYS = [
   { env: "GOOGLE_PLACES_API_KEY", required: "Required for live discovery", detail: "Google Cloud → enable “Places API (New)” → create an API key → restrict it to that API → set a daily quota. Text Search with phone + website fields is billed at the Enterprise tier (about $35 per 1,000 requests, with a free monthly allowance). A 25-business pilot uses 2 requests." },
   { env: "PLACES_DAILY_REQUEST_CAP", required: "Optional (default 20)", detail: "App-side ceiling on billable Places requests per day. It is kept in server memory until Milestone 3, so the Google Cloud quota on the key is your hard limit." },
   { env: "PAGESPEED_API_KEY", required: "Optional", detail: "Free key from Google Cloud (enable the PageSpeed Insights API). When set, each website analysis also records a mobile performance score, shown for information only. Analyses take about 10–30 seconds longer." },
-  { env: "ANTHROPIC_API_KEY", required: "Optional (Milestone 5)", detail: "Only for LLM-written audits and drafts. Template mode is free. Roughly $0.06 per prospect on Claude Opus 5.5, or about $0.002 on Claude Haiku 5.5." },
+  { env: "ANTHROPIC_API_KEY", required: "Optional", detail: "Enables “Write with Claude” drafts, with a cost confirmation each time: about $0.05 per draft on the default Claude Opus 5.5. Template drafts are free and need no key." },
+  { env: "ANTHROPIC_MODEL", required: "Optional", detail: "Override the Claude model (default claude-opus-5-5). claude-haiku-5-5 costs roughly 40× less per draft." },
+  { env: "SENDER_NAME", required: "Recommended", detail: "Your name for draft signatures. Also set SENDER_EMAIL, SENDER_PHONE and SENDER_ADDRESS (a physical mailing address is required in commercial email). Unset values appear as [Your …] placeholders." },
   { env: "APP_PASSWORD", required: "Required on Vercel", detail: "Shared team password. A Vercel deployment without it stays locked, so it can't run up API costs if the URL leaks. Locally, the app is open when this is unset." },
   { env: "SESSION_SECRET", required: "Optional", detail: "Random string used to sign sign-in cookies (e.g. openssl rand -base64 32). If unset, a key derived from APP_PASSWORD is used, so changing the password signs everyone out." },
   { env: "DATABASE_URL", required: "Recommended", detail: "Postgres, e.g. Neon from the Vercel Marketplace (use the pooled connection string). Tables are created automatically on deploy. Without it, prospects are saved only in each user's browser." },
@@ -50,7 +52,8 @@ export default function SetupPage() {
           <li>Website checks read at most two public pages per site (homepage plus one contact or about page) and the favicon. They identify themselves as &ldquo;MonstaLeadHunter&rdquo;, honor robots.txt, and never log in, submit forms or crawl further.</li>
           <li>Every finding records its evidence and confidence. Anything that can&apos;t be observed, such as content built by JavaScript, is recorded as &ldquo;unknown&rdquo; and earns no points.</li>
           <li>The fetcher refuses private and internal network addresses, so a listing can&apos;t point the server at internal systems.</li>
-          <li>The app never sends emails or messages. Outreach drafts are for you to review and send yourself.</li>
+          <li>The app never sends emails or messages. Drafts can be copied or opened in your own email app only after you approve the prospect for outreach, and never for fictional sample businesses.</li>
+          <li>Audits and drafts use only recorded findings. Claude-written drafts are checked against those findings and rejected if they cite anything else or include links, prices or guarantees. The signature, mailing address and opt-out line are always added by the app.</li>
         </ul>
       </section>
     </div>

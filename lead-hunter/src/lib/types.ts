@@ -120,6 +120,40 @@ export interface WebsiteAnalysis {
   pageSpeedNote?: string;
 }
 
+/** One audit point, always tied to a recorded finding (its evidence is copied from that finding). */
+export interface AuditItem {
+  text: string;
+  findingKey: FindingKey;
+  evidence: string | null;
+}
+
+export interface MiniAudit {
+  headline: string;
+  opportunities: AuditItem[];
+  strengths: AuditItem[];
+  /** What couldn't be determined, stated plainly (e.g. vehicle wraps aren't visible on a website). */
+  uncertainties: string[];
+  recommendedServices: { service: string; why: string }[];
+}
+
+export interface OutreachDraft {
+  subject: string;
+  body: string;
+}
+
+export interface Outreach {
+  generatedAt: string;
+  method: "template" | "ai";
+  model?: string;
+  rubricVersion: string;
+  score: number;
+  isFictional: boolean;
+  audit: MiniAudit;
+  draft: OutreachDraft;
+  /** Set when a person edited the draft. */
+  editedAt?: string;
+}
+
 export interface StatusChange {
   status: ProspectStatus;
   at: string;
@@ -140,6 +174,8 @@ export interface Prospect extends DiscoveredBusiness {
   contentExpiresAt: string | null;
   /** True once provider details were cleared; only the source ID and our own data remain. */
   contentExpired: boolean;
+  /** Mini brand audit + outreach draft. Never sent by the app. */
+  outreach: Outreach | null;
   status: ProspectStatus;
   statusHistory: StatusChange[];
   notes: string;

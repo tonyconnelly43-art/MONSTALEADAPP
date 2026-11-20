@@ -11,6 +11,8 @@ export interface AppConfig {
   storage: StorageMode;
   auth: "password" | "locked" | "open";
   googleRetentionDays: number;
+  aiDrafts: boolean;
+  aiModel: string | null;
 }
 
 interface Ctx {

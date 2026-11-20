@@ -53,7 +53,11 @@ export function SearchPanel() {
         setMessages([{ tone: "error", text: issues || data.error || "Search failed." }]);
         return;
       }
-      const { added, duplicates } = store.addMany(data.prospects as Prospect[]);
+      // Database mode: the server already saved them. Browser mode: save locally.
+      const { added, duplicates } = data.saved
+        ? (data.saved as { added: number; duplicates: number })
+        : await store.addMany(data.prospects as Prospect[]);
+      if (data.saved) await store.reload();
       const totalDupes = duplicates + (data.duplicatesRemoved as number);
       setMessages([
         { tone: "info", text: `Found ${data.prospects.length} · added ${added} new · ${totalDupes} duplicate${totalDupes === 1 ? "" : "s"} skipped · ${data.billableRequestsMade} billable API call${data.billableRequestsMade === 1 ? "" : "s"}${data.fromCache ? " (cached)" : ""}.` },

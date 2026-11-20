@@ -32,6 +32,12 @@ const SEARCH_FIELDS = [
   "nextPageToken",
 ].join(",");
 
+/** Place Details uses the same fields without the "places." prefix. */
+const DETAILS_FIELDS = SEARCH_FIELDS.split(",")
+  .filter((f) => f.startsWith("places."))
+  .map((f) => f.replace(/^places\./, ""))
+  .join(",");
+
 const GEOCODE_FIELDS = "places.location,places.formattedAddress";
 
 /** Search phrases that match how Google categorizes these trades. */
@@ -122,26 +128,32 @@ export interface GooglePlacesDeps {
   now?: () => Date;
 }
 
-export function createGooglePlacesProvider(deps: GooglePlacesDeps): DiscoveryProvider {
+export interface GooglePlacesProvider extends DiscoveryProvider {
+  /** Fetch current details for one place (used to refresh expired details). One billable request. */
+  fetchDetails(placeId: string): Promise<{ business: DiscoveredBusiness; billableRequestsMade: number }>;
+  detailsEstimate(): CostEstimate;
+}
+
+export function createGooglePlacesProvider(deps: GooglePlacesDeps): GooglePlacesProvider {
   const doFetch = deps.fetchImpl ?? fetch;
   const now = deps.now ?? (() => new Date());
   const { guard } = deps;
 
-  async function call(body: Record<string, unknown>, fieldMask: string, tally: { n: number }): Promise<SearchResponse> {
+  async function request<T>(url: string, body: Record<string, unknown> | null, fieldMask: string, tally: { n: number }): Promise<T> {
     if (!deps.apiKey) throw new PlacesApiError("GOOGLE_PLACES_API_KEY is not set.", 500);
     let res: Response;
     try {
-      res = await doFetch(ENDPOINT, {
-        method: "POST",
+      res = await doFetch(url, {
+        method: body ? "POST" : "GET",
         headers: { "Content-Type": "application/json", "X-Goog-Api-Key": deps.apiKey, "X-Goog-FieldMask": fieldMask },
-        body: JSON.stringify(body),
+        ...(body ? { body: JSON.stringify(body) } : {}),
         signal: AbortSignal.timeout(10_000),
         cache: "no-store",
       });
     } finally {
       // Count every attempted request against the daily cap, even failures.
-      guard.record(1);
       tally.n++;
+      await guard.record(1);
     }
     if (!res.ok) {
       const detail = await res.json().catch(() => null) as { error?: { message?: string; status?: string } } | null;
@@ -151,8 +163,11 @@ export function createGooglePlacesProvider(deps: GooglePlacesDeps): DiscoveryPro
       if (/api key/i.test(msg)) throw new PlacesApiError(`Google says the API key is invalid: ${msg} Check GOOGLE_PLACES_API_KEY in your environment variables.`, res.status);
       throw new PlacesApiError(`Google Places error ${res.status}: ${msg}`, res.status);
     }
-    return (await res.json()) as SearchResponse;
+    return (await res.json()) as T;
   }
+
+  const call = (body: Record<string, unknown>, fieldMask: string, tally: { n: number }) =>
+    request<SearchResponse>(ENDPOINT, body, fieldMask, tally);
 
   async function locateCity(q: SearchQuery, tally: { n: number }): Promise<{ center: LatLng; label: string } | null> {
     const cached = guard.getCached<{ center: LatLng; label: string }>(cityKey(q));
@@ -182,8 +197,31 @@ export function createGooglePlacesProvider(deps: GooglePlacesDeps): DiscoveryPro
     };
   }
 
+  function detailsEstimate(): CostEstimate {
+    const usd = PLACES_PRICING.placeDetailsEnterprisePer1000Usd / 1000;
+    return {
+      billableRequests: 1,
+      estimatedUsdBeyondFreeTier: usd,
+      explanation: `1 Place Details request (Enterprise tier). $0 while within Google's free monthly allowance; otherwise about $${usd.toFixed(3)} at list prices checked ${PLACES_PRICING.checkedAt}.`,
+    };
+  }
+
   return {
     id: "google_places",
+    detailsEstimate,
+    async fetchDetails(placeId) {
+      if ((await guard.remainingToday()) < 1) {
+        throw new PlacesApiError("Daily request cap reached. Raise PLACES_DAILY_REQUEST_CAP or try tomorrow.", 429);
+      }
+      const tally = { n: 0 };
+      const p = await request<PlaceResponse>(
+        `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
+        null,
+        DETAILS_FIELDS,
+        tally,
+      );
+      return { business: toBusiness(p, now().toISOString()), billableRequestsMade: tally.n };
+    },
     label: "Google Places API (live)",
     isLive: true,
     isConfigured: () => Boolean(deps.apiKey),
@@ -196,9 +234,10 @@ export function createGooglePlacesProvider(deps: GooglePlacesDeps): DiscoveryPro
       }
 
       const est = estimate(q);
-      if (est.billableRequests > guard.remainingToday()) {
+      const remaining = await guard.remainingToday();
+      if (est.billableRequests > remaining) {
         throw new PlacesApiError(
-          `Daily request cap reached: this search needs up to ${est.billableRequests} requests, ${guard.remainingToday()} remain today. Raise PLACES_DAILY_REQUEST_CAP or try tomorrow.`,
+          `Daily request cap reached: this search needs up to ${est.billableRequests} requests, ${remaining} remain today. Raise PLACES_DAILY_REQUEST_CAP or try tomorrow.`,
           429,
         );
       }

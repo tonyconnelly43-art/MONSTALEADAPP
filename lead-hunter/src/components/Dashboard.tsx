@@ -1,6 +1,7 @@
 "use client";
-import { useMemo, useState } from "react";
-import { AlertTriangle, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Database, HardDrive, Trash2, Upload } from "lucide-react";
+import { clearBrowserProspects, readBrowserProspects } from "@/lib/store/localStore";
 import { PROSPECT_STATUSES } from "@/lib/types";
 import { scoreProspect } from "@/lib/scoring/rubric";
 import { useProspects } from "./ProspectsProvider";
@@ -9,8 +10,18 @@ import { ProspectTable, type Scored } from "./ProspectTable";
 import { ProspectDrawer } from "./ProspectDrawer";
 
 export function Dashboard() {
-  const { prospects, store, ready } = useProspects();
+  const { prospects, store, ready, loadError } = useProspects();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function act(fn: () => Promise<unknown>) {
+    try {
+      setActionError(null);
+      await fn();
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
+  }
 
   const rows: Scored[] = useMemo(() => prospects.map((p) => ({ p, s: scoreProspect(p) })), [prospects]);
   const fictionalCount = prospects.filter((p) => p.isFictional).length;
@@ -28,12 +39,16 @@ export function Dashboard() {
           </span>
           <button
             className="btn-ghost py-1 text-xs"
-            onClick={() => store?.remove(prospects.filter((p) => p.isFictional).map((p) => p.id))}
+            onClick={() => act(async () => store?.remove(prospects.filter((p) => p.isFictional).map((p) => p.id)))}
           >
             <Trash2 className="h-3.5 w-3.5" /> Remove sample data
           </button>
         </div>
       )}
+
+      {loadError && <div role="alert" className="rounded-lg border border-brand-500/50 bg-brand-500/10 px-4 py-3 text-sm text-brand-400">{loadError}</div>}
+      {actionError && <div role="alert" className="rounded-lg border border-brand-500/50 bg-brand-500/10 px-4 py-3 text-sm text-brand-400">{actionError}</div>}
+      {store?.mode === "database" && <BrowserImport />}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Prospects" value={rows.length} />
@@ -44,9 +59,14 @@ export function Dashboard() {
 
       <SearchPanel />
 
-      {rows.length > 0 && (
-        <div className="flex flex-wrap gap-2 text-xs">
-          {PROSPECT_STATUSES.map((s) => (
+      {ready && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {store?.mode === "database" ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-300"><Database className="h-3 w-3" /> Saved to shared database</span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-ink-800 px-2.5 py-1 text-ink-300" title="Set DATABASE_URL to share prospects across devices and teammates."><HardDrive className="h-3 w-3" /> Saved in this browser only</span>
+          )}
+          {rows.length > 0 && PROSPECT_STATUSES.map((s) => (
             <span key={s} className="rounded-full border border-ink-700 px-2.5 py-1 text-ink-300">
               {s}: <span className="font-semibold text-ink-100">{prospects.filter((p) => p.status === s).length}</span>
             </span>
@@ -77,6 +97,48 @@ function Kpi({ label, value, hint }: { label: string; value: number; hint?: stri
     <div className="card p-4" title={hint}>
       <div className="text-2xl font-black tabular-nums">{value}</div>
       <div className="text-xs text-ink-300">{label}</div>
+    </div>
+  );
+}
+
+/** Offers a one-time move of prospects saved in this browser (before the database existed). */
+function BrowserImport() {
+  const { store } = useProspects();
+  const [count, setCount] = useState(0);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // Reads browser storage once after mount (not available during server render).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCount(readBrowserProspects().length);
+  }, []);
+
+  if (count === 0 && !msg) return null;
+
+  async function run() {
+    if (!store) return;
+    setBusy(true);
+    try {
+      const r = await store.addMany(readBrowserProspects());
+      clearBrowserProspects();
+      setCount(0);
+      setMsg(`Imported ${r.added} prospect${r.added === 1 ? "" : "s"} (${r.duplicates} already in the database). The browser copy was cleared.`);
+    } catch (e) {
+      setMsg(`Import failed: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-400/40 bg-sky-400/10 px-4 py-3 text-sm text-sky-200">
+      <span>{msg ?? `${count} prospect${count === 1 ? " is" : "s are"} saved only in this browser from before the database was connected.`}</span>
+      {count > 0 && (
+        <button className="btn-ghost py-1 text-xs" onClick={run} disabled={busy}>
+          <Upload className="h-3.5 w-3.5" /> Import to shared database
+        </button>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { X, ExternalLink, Phone, Globe, MapPin, Star, AlertTriangle, CheckCircle2, XCircle, HelpCircle, Lock } from "lucide-react";
+import { X, RefreshCw, Loader2, ExternalLink, Phone, Globe, MapPin, Star, AlertTriangle, CheckCircle2, XCircle, HelpCircle, Lock } from "lucide-react";
 import { PROSPECT_STATUSES, type Finding, type FindingDimension, type Prospect } from "@/lib/types";
 import { scoreProspect, type ScoreComponent } from "@/lib/scoring/rubric";
 import { DIMENSION_LABELS, FINDING_META } from "@/lib/findings";
@@ -13,6 +13,7 @@ export function ProspectDrawer({ prospect, onClose }: { prospect: Prospect; onCl
   const score = scoreProspect(prospect);
   const [notes, setNotes] = useState(prospect.notes);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -20,10 +21,20 @@ export function ProspectDrawer({ prospect, onClose }: { prospect: Prospect; onCl
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  function changeStatus(to: (typeof PROSPECT_STATUSES)[number]) {
+  async function changeStatus(to: (typeof PROSPECT_STATUSES)[number]) {
     if (!store) return;
-    const r = store.setStatus(prospect.id, to);
+    const r = await store.setStatus(prospect.id, to);
     setStatusError(r.ok ? null : (r.reason ?? "Not allowed."));
+  }
+
+  async function save(patch: Parameters<NonNullable<typeof store>["update"]>[1]) {
+    if (!store) return;
+    try {
+      await store.update(prospect.id, patch);
+      setSaveError(null);
+    } catch (e) {
+      setSaveError((e as Error).message);
+    }
   }
 
   return (
@@ -55,6 +66,8 @@ export function ProspectDrawer({ prospect, onClose }: { prospect: Prospect; onCl
               This is a fictional sample business with invented findings. Do not contact it.
             </div>
           )}
+
+          {prospect.provider === "google_places" && <GoogleRetention prospect={prospect} />}
 
           {/* Contact & source */}
           <section>
@@ -114,7 +127,7 @@ export function ProspectDrawer({ prospect, onClose }: { prospect: Prospect; onCl
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
               <span className="text-ink-300">Chain / franchise?</span>
               {([["No", false], ["Yes", true], ["Unknown", null]] as const).map(([label, v]) => (
-                <button key={label} onClick={() => store?.update(prospect.id, { chainSuspected: v })} className={`rounded-md border px-2 py-0.5 text-xs ${prospect.chainSuspected === v ? "border-brand-500 bg-brand-500/20" : "border-ink-700 text-ink-300 hover:text-white"}`}>{label}</button>
+                <button key={label} onClick={() => save({ chainSuspected: v })} className={`rounded-md border px-2 py-0.5 text-xs ${prospect.chainSuspected === v ? "border-brand-500 bg-brand-500/20" : "border-ink-700 text-ink-300 hover:text-white"}`}>{label}</button>
               ))}
             </div>
           </section>
@@ -125,10 +138,12 @@ export function ProspectDrawer({ prospect, onClose }: { prospect: Prospect; onCl
             <Findings prospect={prospect} />
           </section>
 
+          {saveError && <p className="text-sm text-brand-400" role="alert">Could not save: {saveError}</p>}
+
           {/* Notes */}
           <section>
             <label htmlFor="notes" className="mb-2 block text-sm font-bold uppercase tracking-wide text-ink-300">Notes</label>
-            <textarea id="notes" rows={3} className="field" value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== prospect.notes && store?.update(prospect.id, { notes })} placeholder="Observations from manual review (truck wraps, signage, social…)" />
+            <textarea id="notes" rows={3} className="field" value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== prospect.notes && save({ notes })} placeholder="Observations from manual review (truck wraps, signage, social…)" />
           </section>
 
           <section className="rounded-lg border border-dashed border-ink-700 p-3 text-sm text-ink-300">
@@ -221,6 +236,66 @@ function Findings({ prospect }: { prospect: Prospect }) {
           </ul>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Google details expire under the provider's terms; offer a confirmed, billable refresh. */
+function GoogleRetention({ prospect }: { prospect: Prospect }) {
+  const { store } = useProspects();
+  const [estimate, setEstimate] = useState<{ billableRequests: number; estimatedUsdBeyondFreeTier: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canRefresh = store?.mode === "database";
+
+  async function refresh(confirmBillable: boolean) {
+    if (!store) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/prospects/${encodeURIComponent(prospect.id)}/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmBillable }),
+      });
+      const data = await res.json();
+      if (res.status === 409 && data.estimate) setEstimate(data.estimate);
+      else if (!res.ok) setError(data.error ?? "Refresh failed.");
+      else {
+        setEstimate(null);
+        store.put(data.prospect as Prospect);
+      }
+    } catch {
+      setError("Network error.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const expires = prospect.contentExpiresAt ? new Date(prospect.contentExpiresAt) : null;
+  const tone = prospect.contentExpired ? "border-amber-400/40 bg-amber-400/10 text-amber-200" : "border-ink-700 bg-ink-850 text-ink-300";
+
+  return (
+    <div className={`rounded-lg border p-3 text-sm ${tone}`}>
+      <p>
+        {prospect.contentExpired
+          ? "Google details for this business were cleared under the retention policy. Your status, notes and history are kept."
+          : `Google details are kept until ${expires?.toLocaleDateString() ?? "—"}, then cleared automatically. Your status, notes and history are kept.`}
+      </p>
+      {canRefresh && (
+        estimate ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span>1 billable Google request (~${estimate.estimatedUsdBeyondFreeTier.toFixed(3)} beyond the free allowance).</span>
+            <button className="btn-primary py-1 text-xs" disabled={busy} onClick={() => refresh(true)}>Confirm refresh</button>
+            <button className="btn-ghost py-1 text-xs" onClick={() => setEstimate(null)}>Cancel</button>
+          </div>
+        ) : (
+          <button className="btn-ghost mt-2 py-1 text-xs" disabled={busy} onClick={() => refresh(false)}>
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh from Google
+          </button>
+        )
+      )}
+      {error && <p className="mt-1 text-xs text-brand-400">{error}</p>}
     </div>
   );
 }

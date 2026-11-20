@@ -10,7 +10,10 @@ const KEYS = [
   { env: "PLACES_DAILY_REQUEST_CAP", required: "Optional (default 20)", detail: "App-side ceiling on billable Places requests per day. It is kept in server memory until Milestone 3, so the Google Cloud quota on the key is your hard limit." },
   { env: "PAGESPEED_API_KEY", required: "Optional (Milestone 4)", detail: "Free. Raises the PageSpeed Insights quota for mobile and performance checks." },
   { env: "ANTHROPIC_API_KEY", required: "Optional (Milestone 5)", detail: "Only for LLM-written audits and drafts. Template mode is free. Roughly $0.06 per prospect on Claude Opus 5.5, or about $0.002 on Claude Haiku 5.5." },
-  { env: "DATABASE_URL", required: "Milestone 3", detail: "Postgres (e.g. Neon from the Vercel Marketplace). Until then, prospects are saved in this browser only." },
+  { env: "APP_PASSWORD", required: "Required on Vercel", detail: "Shared team password. A Vercel deployment without it stays locked, so it can't run up API costs if the URL leaks. Locally, the app is open when this is unset." },
+  { env: "SESSION_SECRET", required: "Optional", detail: "Random string used to sign sign-in cookies (e.g. openssl rand -base64 32). If unset, a key derived from APP_PASSWORD is used, so changing the password signs everyone out." },
+  { env: "DATABASE_URL", required: "Recommended", detail: "Postgres, e.g. Neon from the Vercel Marketplace (use the pooled connection string). Tables are created automatically on deploy. Without it, prospects are saved only in each user's browser." },
+  { env: "GOOGLE_CONTENT_RETENTION_DAYS", required: "Optional (default 30)", detail: "How long Google-supplied details (name, phone, website…) are kept before being cleared automatically. Place IDs, statuses, notes and history are always kept, and details can be refreshed (1 billable request each)." },
 ];
 
 export default function SetupPage() {

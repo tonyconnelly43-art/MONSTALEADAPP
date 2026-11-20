@@ -107,7 +107,25 @@ describe("google places provider", () => {
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toMatch(/403/);
     expect((err as Error).message).not.toContain("secret-key-123");
-    expect(guard.remainingToday()).toBe(4); // failed call still counted
+    expect(await guard.remainingToday()).toBe(4); // failed call still counted
+  });
+
+  it("fetches Place Details with an unprefixed field mask (refresh)", async () => {
+    const guard = createUsageGuard({ dailyCap: 5 });
+    let seen: { url: string; mask: string; method?: string } | null = null;
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      seen = { url: String(url), mask: (init?.headers as Record<string, string>)["X-Goog-FieldMask"], method: init?.method };
+      return new Response(JSON.stringify(place("9")));
+    });
+    const p = createGooglePlacesProvider({ apiKey: "k", guard, fetchImpl: fetchImpl as unknown as typeof fetch });
+    const r = await p.fetchDetails("9");
+    expect(seen!.url).toBe("https://places.googleapis.com/v1/places/9");
+    expect(seen!.method).toBe("GET");
+    expect(seen!.mask).toContain("nationalPhoneNumber");
+    expect(seen!.mask).not.toContain("places.");
+    expect(seen!.mask).not.toContain("nextPageToken");
+    expect(r.business.sourceId).toBe("9");
+    expect(r.billableRequestsMade).toBe(1);
   });
 
   it("computes distances in miles", () => {

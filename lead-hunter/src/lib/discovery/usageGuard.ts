@@ -1,38 +1,54 @@
 /**
  * Cost guard for billable providers: a daily request cap plus a short-lived result cache.
  *
- * NOTE: This is in-memory, so on Vercel each server instance keeps its own counter and cache,
- * and both reset on cold start. Treat it as a convenience layer; the authoritative hard limit
- * is the quota you set on the API key in Google Cloud Console. Milestone 3 persists both in Postgres.
+ * The request counter is pluggable: in-memory (per server instance, resets on cold start) or
+ * Postgres-backed (shared across instances — used automatically when DATABASE_URL is set).
+ * Either way, the authoritative hard limit is the quota on the API key in Google Cloud Console.
+ *
+ * The result cache is intentionally in-memory only: it is a short-lived performance cache of
+ * provider content, not durable storage.
  */
+export interface RequestCounter {
+  usedOn(day: string): Promise<number>;
+  add(day: string, n: number): Promise<void>;
+}
+
+export function createMemoryCounter(): RequestCounter {
+  const used = new Map<string, number>();
+  return {
+    async usedOn(day) {
+      return used.get(day) ?? 0;
+    },
+    async add(day, n) {
+      used.set(day, (used.get(day) ?? 0) + n);
+    },
+  };
+}
+
 export interface UsageGuard {
-  remainingToday(): number;
-  record(requests: number): void;
+  remainingToday(): Promise<number>;
+  record(requests: number): Promise<void>;
   getCached<T>(key: string): T | undefined;
   setCached<T>(key: string, value: T): void;
 }
 
-export function createUsageGuard(opts: { dailyCap: number; cacheTtlMs?: number; now?: () => number }): UsageGuard {
+export function createUsageGuard(opts: {
+  dailyCap: number;
+  counter?: RequestCounter;
+  cacheTtlMs?: number;
+  now?: () => number;
+}): UsageGuard {
   const now = opts.now ?? Date.now;
   const ttl = opts.cacheTtlMs ?? 24 * 60 * 60 * 1000;
-  let day = "";
-  let used = 0;
+  const counter = opts.counter ?? createMemoryCounter();
   const cache = new Map<string, { at: number; value: unknown }>();
-  const today = () => new Date(now()).toISOString().slice(0, 10);
-  const roll = () => {
-    if (day !== today()) {
-      day = today();
-      used = 0;
-    }
-  };
+  const today = () => new Date(now()).toISOString().slice(0, 10); // UTC day
   return {
-    remainingToday() {
-      roll();
-      return Math.max(0, opts.dailyCap - used);
+    async remainingToday() {
+      return Math.max(0, opts.dailyCap - (await counter.usedOn(today())));
     },
-    record(n) {
-      roll();
-      used += n;
+    async record(n) {
+      await counter.add(today(), n);
     },
     getCached<T>(key: string) {
       const hit = cache.get(key);

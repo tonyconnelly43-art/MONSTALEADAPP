@@ -9,6 +9,8 @@ export const PLACES_PRICING = {
   textSearchEnterprisePer1000Usd: 35,
   /** Text Search requesting location only (used to locate the city center) → Pro tier. */
   textSearchProPer1000Usd: 32,
+  /** Place Details with phone/website/rating fields → Enterprise tier (used to refresh expired details). */
+  placeDetailsEnterprisePer1000Usd: 20,
   /** Results per Text Search page (API maximum). */
   pageSize: 20,
 };

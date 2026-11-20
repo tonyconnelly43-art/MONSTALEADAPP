@@ -119,6 +119,13 @@ export interface Prospect extends DiscoveredBusiness {
   /** Whether the business is suspected to be a large chain/franchise. null = not assessed. */
   chainSuspected: boolean | null;
   analysis: WebsiteAnalysis | null;
+  /**
+   * When provider-supplied details must be deleted under the provider's terms (Google Places).
+   * null = no limit (sample data, or our own data).
+   */
+  contentExpiresAt: string | null;
+  /** True once provider details were cleared; only the source ID and our own data remain. */
+  contentExpired: boolean;
   status: ProspectStatus;
   statusHistory: StatusChange[];
   notes: string;

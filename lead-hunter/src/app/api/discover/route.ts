@@ -4,12 +4,16 @@ import { getProvider } from "@/lib/discovery/registry";
 import { dedupe } from "@/lib/discovery/dedupe";
 import { PlacesApiError } from "@/lib/discovery/googlePlaces";
 import { toProspect } from "@/lib/prospects";
+import { requireAuth } from "@/lib/auth/requireAuth";
+import { getRepo, googleRetentionDays } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  const parsed = discoverRequestSchema.safeParse(body);
+  const denied = await requireAuth();
+  if (denied) return denied;
+
+  const parsed = discoverRequestSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid search", issues: parsed.error.issues }, { status: 400 });
   }
@@ -30,16 +34,23 @@ export async function POST(req: Request) {
     const result = await provider.search(query);
     const { unique, duplicates } = dedupe(result.businesses);
     const limited = unique.slice(0, query.limit);
+    const retention = googleRetentionDays();
     const prospects = limited.map((b) => {
       const industry =
         result.industryBySourceId[b.sourceId] ?? (query.industry === ALL_INDUSTRIES ? (b.category ?? "Unknown") : query.industry);
-      return toProspect(b, industry, result.enrichments?.[b.sourceId]);
+      return toProspect(b, industry, result.enrichments?.[b.sourceId], retention);
     });
     const notes = [...result.notes];
     if (unique.length > limited.length) notes.push(`Capped at ${query.limit} results (${unique.length - limited.length} more available).`);
+
+    // Database mode: save on the server (dedupes against everything already stored).
+    const repo = getRepo();
+    const saved = repo ? await repo.addMany(prospects) : null;
+
     return NextResponse.json({
       prospects,
       duplicatesRemoved: duplicates,
+      saved,
       notes,
       billableRequestsMade: result.billableRequestsMade,
       fromCache: Boolean(result.fromCache),

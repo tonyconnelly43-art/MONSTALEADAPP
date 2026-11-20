@@ -49,11 +49,37 @@ Deploy on Vercel: import the repo and set **Root Directory** to `lead-hunter`.
 
 Google Maps Platform terms limit how long Places content (anything except place IDs) may be stored. Milestone 3 will store place IDs durably and refresh details from Google rather than keeping them indefinitely.
 
+## Status — Milestone 3 ✅
+
+- **Shared database** (Postgres via Drizzle ORM, `src/lib/db`, `src/lib/repo`). When `DATABASE_URL` is set:
+  - Prospects are saved on the server and shared by everyone who signs in.
+  - Searches are deduplicated against everything already stored.
+  - The outreach approval gate is enforced by the server.
+  - The daily Google request cap is counted in the database, so it holds across server instances.
+- **Migrations** live in `drizzle/` and run automatically during `npm run build` (skipped when there is no database).
+- **Browser-to-database import:** prospects saved in a browser before the database existed can be moved over in one click.
+- **Password protection** (`src/proxy.ts`, `src/lib/auth`):
+  - A shared `APP_PASSWORD` and a signed, HttpOnly session cookie that lasts 30 days.
+  - The check runs in `proxy.ts` and again in every API route.
+  - A Vercel deployment **without** `APP_PASSWORD` is locked; locally the app stays open.
+- **Google content retention:**
+  - Google-supplied details are cleared automatically after `GOOGLE_CONTENT_RETENTION_DAYS` (default 30).
+  - Place IDs, statuses, notes and history are kept.
+  - Expired details can be refreshed with Place Details: 1 billable request, confirmed first.
+- Without `DATABASE_URL` the app still works in browser-only mode, as in Milestones 1–2.
+
+### Deploying with a database
+1. Vercel → Storage / Marketplace → add **Neon Postgres** to the project. This sets `DATABASE_URL`; use the pooled connection string.
+2. Add `APP_PASSWORD` (and optionally `SESSION_SECRET`).
+3. Redeploy. The build creates the tables.
+
+### Database tests
+`npm run test:db` runs repository integration tests against `TEST_DATABASE_URL`. **That database is wiped**, so use a throwaway local database only.
+
 ## Roadmap
 
 | Milestone | Scope |
 |---|---|
-| 3 | Postgres (Neon) store + password protection |
 | 4 | Website analyzer (robots.txt-aware, ≤2 pages, evidence and confidence) + PageSpeed Insights |
 | 5 | Mini brand audit + outreach drafts (template; optional Claude), copy or mailto only |
 | Later | CRM sync adapters, scheduled discovery (Vercel Cron), nationwide presets |
